@@ -215,7 +215,7 @@ def run():
     # CEK JUAL
     for pos in positions[:]:
         target = pos["buy_price"] * (1 + PROFIT_PCT / 100)
-        amt_sell = pos["amount"] * 0.997
+        amt_sell = pos["amount"] * 0.999  # Bybit spot fee 0.1%
         if price >= target and eth >= MIN_ETH:
             try:
                 ex.create_market_sell_order(SYMBOL, amt_sell)
