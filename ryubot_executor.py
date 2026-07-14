@@ -60,7 +60,8 @@ def execute(action):
             result["message"] = f"ETH {amt:.6f} < 0.0001 — GAK BISA DIJUAL! Butuh minimal ${round(0.0001 * price * 1.002, 2)}"
         else:
             order = ex.create_market_buy_order(SYMBOL, amt)
-            result.update({"status": "executed", "amount_eth": round(amt, 6), "cost_usdt": TRADE_AMOUNT,
+            filled = float(order.get("filled") or amt)
+            result.update({"status": "executed", "amount_eth": round(filled, 6), "cost_usdt": TRADE_AMOUNT,
                            "message": f"BUY ${TRADE_AMOUNT} @ ${price:,.2f} ✅"})
             
             # Notif detail
@@ -72,7 +73,7 @@ def execute(action):
                 f"╰──────────────────────────╯\n\n"
                 f"✅ **BELI BERHASIL**\n"
                 f"💰 Harga: **`${price:,.0f}`**\n"
-                f"₿ ETH: `{amt:.6f}`\n"
+                f"₿ ETH: `{filled:.6f}`\n"
                 f"💵 Biaya: `$5.00`\n\n"
                 f"━━━ **📋 ALASAN** ━━━\n"
                 f"💬 _{alasan}_\n\n"
@@ -86,11 +87,12 @@ def execute(action):
             result["message"] = f"ETH gak cukup: {eth:.6f}"
         else:
             order = ex.create_market_sell_order(SYMBOL, sell_eth)
-            usdt_received = round(sell_eth * price, 2)
-            result.update({"status": "executed", "amount_eth": round(sell_eth, 6),
-                           "cost_usdt": usdt_received, "message": f"SELL {sell_eth:.6f} ETH @ ${price:,.2f} ✅"})
+            filled = float(order.get("filled") or sell_eth)
+            usdt_received = round(filled * price, 2)
+            result.update({"status": "executed", "amount_eth": round(filled, 6),
+                           "cost_usdt": usdt_received, "message": f"SELL {filled:.6f} ETH @ ${price:,.2f} ✅"})
             
-            # Hitung profit dari state file (modal beneran)
+            # Hitung profit dari modal awal (state file)
             profit = 0
             try:
                 with open(os.path.expanduser("~/.hermes/scripts/ryubot_state.json")) as f:

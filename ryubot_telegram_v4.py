@@ -98,8 +98,9 @@ MAIN_KEYBOARD = InlineKeyboardMarkup([
     [InlineKeyboardButton("🔍 Depth", callback_data="depth"),
      InlineKeyboardButton("📜 Trade", callback_data="trades")],
     [InlineKeyboardButton("🟢 Buy $5", callback_data="buy"),
-     InlineKeyboardButton("🔴 Sell ETH", callback_data="sell")],
-    [InlineKeyboardButton("📌 Tools", callback_data="tools")],
+     InlineKeyboardButton("🔴 Sell All", callback_data="sell")],
+    [InlineKeyboardButton("📌 Grid Sell", callback_data="grid_sell"),
+     InlineKeyboardButton("📌 Tools", callback_data="tools")],
 ])
 
 TOOLS_KEYBOARD = InlineKeyboardMarkup([
@@ -164,7 +165,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"RSI `{bar_rsi}` `{d.get('rsi', 0)}` | Score `{d.get('score', 0)}`\n\n"
         f"**💰 Portfolio**\n"
         f"┃ USDT `{progress_bar(d['usdt'], 15)}` `${d['usdt']:.2f}`\n"
-        f"┃ ETH  `{progress_bar(eth_val*d['price'], 15)}` `{eth_val:.4f}`\n"
+        f"┃ ETH  `{progress_bar(eth_val*d['price'], 15)}` `{eth_val:.6f}`\n"
         f"┃ **Total** **`${total:.2f}`**\n"
         f"{profit_emoji} **Profit:** `${profit:+.2f}`\n\n"
         f"**🔄 GRID**\n{grid_info}\n"
@@ -266,6 +267,27 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     bar_total = progress_bar(total, 20)
     profit_emoji = "🟢" if profit >= 0 else "🔴"
     
+    # Ambil data grid dari unified
+    grid_info = ""
+    if d.get("unified"):
+        g = d["unified"].get("grid", {})
+        positions = g.get("positions", [])
+        grid_profit = g.get("total_profit", 0)
+        trade_count = g.get("trade_count", 0)
+        if positions:
+            pos = positions[-1]
+            target = pos["buy_price"] * 1.01
+            pnl = (d["price"] - pos["buy_price"]) / pos["buy_price"] * 100
+            ep = "🟢" if pnl >= 0 else "🔴"
+            grid_info = (
+                f"\n**🔄 Transaksi Terakhir**\n"
+                f"└ Grid: Beli `${pos['buy_price']:,.2f}` → Target `${target:,.0f}`\n"
+                f"└ Status: {ep} `{pnl:+.2f}%` | Trade ke-`{trade_count}`\n"
+                f"└ Profit grid: **`+${grid_profit:.2f}`**"
+            )
+        else:
+            grid_info = "\n**🔄 Transaksi Terakhir**\n└ Belum ada posisi grid aktif"
+    
     txt = (
         f"╭─── **📋 PORTFOLIO** ───╮\n"
         f"╰──────────────────────╯\n\n"
@@ -276,8 +298,9 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"┃ **Total** **`${total:.2f}`**\n\n"
         f"**📊 Progress**\n"
         f"`{bar_total}`\n\n"
-        f"{profit_emoji} Profit: **`${profit:.2f}`**\n"
+        f"{profit_emoji} Profit: **`${profit:.2f}`** _(setelah fee)_\n"
         f"📈 ETH: `${d['price']:,.0f}` _({d['change']:+.2f}%)_"
+        f"{grid_info}"
     )
     await send_or_edit(update, ctx, txt, edit=True)
 
@@ -502,16 +525,13 @@ async def cmd_sell_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         result = json.loads(r.stdout)
         if result["status"] == "executed":
-            d = get_data()
-            profit = result.get("cost_usdt", 0) - TRADE_AMOUNT
-            emoji_p = "🟢" if profit >= 0 else "🔴"
             txt = (
                 f"╭─── **✅ JUAL BERHASIL** ───╮\n"
                 f"╰────────────────────────╯\n\n"
-                f"💰 **Dapat**: `${result['cost_usdt']:.2f}`\n"
-                f"💵 **Harga**: `${result['price']:,.0f}`\n"
-                f"{emoji_p} **Profit**: `${profit:.2f}`\n\n"
-                f"📈 ETH skrg: `${d['price']:,.0f}`"
+                f"💰 **Dapat**: **`${result['cost_usdt']:.2f}`**\n"
+                f"₿ **ETH**: `{result['amount_eth']:.6f}`\n"
+                f"💵 **Harga**: `${result['price']:,.0f}`\n\n"
+                f"📊 Lihat menu Portfolio untuk detail profit"
             )
         else:
             txt = f"❌ `{result['message']}`"
@@ -519,30 +539,102 @@ async def cmd_sell_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await send_or_edit(update, ctx, f"❌ `{e}`", edit=True)
 
-async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.answer()
-    data = update.callback_query.data
-    
-    handlers = {
-        "start": cmd_start, "price": cmd_price, "analysis": cmd_analysis,
-        "chart": cmd_chart, "status": cmd_status,
-        "depth": cmd_depth, "trades": cmd_trades,
-        "tools": cmd_tools, "fear": cmd_fear, "news": cmd_news,
-        "alert_set": cmd_alert_set, "alert_off": cmd_alert_off,
-        "buy": cmd_buy, "buy_confirm": cmd_buy_confirm,
-        "sell": cmd_sell, "sell_confirm": cmd_sell_confirm,
-    }
-    
-    # Handle dynamic alert_* callbacks
-    if data.startswith("alert_") and data not in ("alert_set", "alert_off"):
-        await cmd_alert_on(update, ctx)
-    elif data in handlers:
-        await handlers[data](update, ctx)
+async def cmd_grid_sell(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Tampilkan pilihan grid — data real-time dari Bybit"""
+    await send_or_edit(update, ctx, "⏳ *Ambil data real-time...*", edit=True)
+    try:
+        ex = get_exchange()
+        ticker = ex.fetch_ticker("ETH/USDT")
+        price = ticker["last"]
+        bal = ex.fetch_balance()
+        eth_free = float(bal.get("ETH", {}).get("free", 0))
+        
+        # Baca posisi grid dari state file langsung
+        import json
+        grid_file = os.path.expanduser("~/.hermes/scripts/ryubot_grid_state.json")
+        try:
+            with open(grid_file) as f:
+                grid_state = json.load(f)
+        except:
+            await send_or_edit(update, ctx, "❌ **Gagal baca grid state**", edit=True)
+            return
+        
+        positions = grid_state.get("positions", [])
+        if not positions:
+            await send_or_edit(update, ctx, "📭 **Tidak ada posisi grid aktif**", edit=True)
+            return
+        
+        txt = "╭─── **📌 GRID SELL** ───╮\n╰──────────────────────╯\n\n"
+        txt += f"🟢 ETH **`${price:,.0f}`** (real-time)\n"
+        txt += f"┃ ETH: `{eth_free:.6f}` | USDT: `${float(bal.get('USDT',{}).get('free',0)):.2f}`\n\n"
+        txt += "Pilih grid yang mau dijual:\n\n"
+        
+        keyboard = []
+        for i, pos in enumerate(positions):
+            target = pos["buy_price"] * 1.01
+            pnl = (price - pos["buy_price"]) / pos["buy_price"] * 100
+            ep = "🟢" if pnl >= 0 else "🔴"
+            
+            # Hitung estimasi real kalo sell sekarang
+            amt_sell = min(pos["amount"] * 0.999, eth_free * 0.997)
+            usdt_est = round(amt_sell * price, 2)
+            profit_est = round(usdt_est - pos["cost"], 2)
+            profit_emoji = "🟢" if profit_est >= 0 else "🔴"
+            
+            label = f"Grid {i+1}: ${pos['buy_price']:,.0f} → ${target:,.0f} {ep} {pnl:+.2f}%"
+            txt += (
+                f"**Grid {i+1}:** Beli `${pos['buy_price']:,.2f}` "
+                f"| Target `${target:,.0f}` | {ep} `{pnl:+.2f}%`\n"
+                f"💵 **Jual sekarang:** ~`${usdt_est:.2f}` "
+                f"({profit_emoji} **`{profit_est:+.2f}`** dari modal `${pos['cost']:.2f}`)\n\n"
+            )
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"grid_sell_{i}")])
+        
+        keyboard.append([InlineKeyboardButton("« Kembali", callback_data="start")])
+        kb = InlineKeyboardMarkup(keyboard)
+        await send_or_edit(update, ctx, txt, kb, edit=True)
+    except Exception as e:
+        await send_or_edit(update, ctx, f"❌ **Error ambil data:** `{e}`", edit=True)
 
+async def cmd_grid_sell_execute(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Jalankan force sell untuk grid index tertentu"""
+    idx = int(update.callback_query.data.split("_")[-1])
+    await send_or_edit(update, ctx, f"⏳ *Menjual Grid {idx+1}...*", edit=True)
+    try:
+        r = subprocess.run(
+            ["python3", os.path.expanduser("~/.hermes/scripts/ryubot_grid.py"),
+             "--force-sell", "--grid-index", str(idx)],
+            capture_output=True, text=True, timeout=20)
+        txt = f"✅ **Grid {idx+1} berhasil dijual!**\n\nCek notif dari Yuki Grid Bot buat detailnya."
+        await send_or_edit(update, ctx, txt, edit=True)
+    except Exception as e:
+        await send_or_edit(update, ctx, f"❌ **Gagal jual Grid {idx+1}:** `{e}`", edit=True)
+
+# ── MAIN ──
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
+    
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(CallbackQueryHandler(cmd_start, pattern="^start$"))
+    app.add_handler(CallbackQueryHandler(cmd_price, pattern="^price$"))
+    app.add_handler(CallbackQueryHandler(cmd_analysis, pattern="^analysis$"))
+    app.add_handler(CallbackQueryHandler(cmd_chart, pattern="^chart$"))
+    app.add_handler(CallbackQueryHandler(cmd_status, pattern="^status$"))
+    app.add_handler(CallbackQueryHandler(cmd_depth, pattern="^depth$"))
+    app.add_handler(CallbackQueryHandler(cmd_trades, pattern="^trades$"))
+    app.add_handler(CallbackQueryHandler(cmd_buy, pattern="^buy$"))
+    app.add_handler(CallbackQueryHandler(cmd_buy_confirm, pattern="^buy_confirm$"))
+    app.add_handler(CallbackQueryHandler(cmd_sell, pattern="^sell$"))
+    app.add_handler(CallbackQueryHandler(cmd_sell_confirm, pattern="^sell_confirm$"))
+    app.add_handler(CallbackQueryHandler(cmd_grid_sell, pattern="^grid_sell$"))
+    app.add_handler(CallbackQueryHandler(cmd_grid_sell_execute, pattern=r"^grid_sell_\d+$"))
+    app.add_handler(CallbackQueryHandler(cmd_tools, pattern="^tools$"))
+    app.add_handler(CallbackQueryHandler(cmd_fear, pattern="^fear$"))
+    app.add_handler(CallbackQueryHandler(cmd_news, pattern="^news$"))
+    app.add_handler(CallbackQueryHandler(cmd_alert_set, pattern="^alert_set$"))
+    app.add_handler(CallbackQueryHandler(cmd_alert_on, pattern="^alert_"))
+    app.add_handler(CallbackQueryHandler(cmd_alert_off, pattern="^alert_off$"))
+
     print("🤖 Yuki17TradingBot v4 — running...")
     app.run_polling()
 

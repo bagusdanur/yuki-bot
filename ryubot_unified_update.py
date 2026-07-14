@@ -97,7 +97,7 @@ def update():
         },
         "portfolio": {
             "usdt": round(usdt, 2),
-            "eth": round(eth, 4),
+            "eth": round(eth, 6),
             "total": round(total, 2)
         },
         "indicators": {

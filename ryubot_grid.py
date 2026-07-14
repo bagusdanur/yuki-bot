@@ -25,6 +25,7 @@ GRID_LEVELS = 2
 PROFIT_PCT  = 1.0
 MIN_ETH     = 0.001
 RESERVE     = 0.5
+POSITION_SIZE = 8.0  # $8 per grid
 
 def tg(text):
     try:
@@ -183,7 +184,7 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
         f"{pos_lines}\n"
         f"━━━ **💰 PORTFOLIO** ━━━\n"
         f"`{bar_total}`\n"
-        f"┃ USDT: `${usdt:.2f}` | ETH: `{eth:.4f}`\n"
+        f"┃ USDT: `${usdt:.2f}` | ETH: `{eth:.6f}`\n"
         f"┃ **Total: `${total:.2f}`**\n"
         f"┃ Modal grid: `${total_invested:.2f}`\n\n"
         f"━━━ **🔥 INSIGHT** ━━━\n"
@@ -196,7 +197,7 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
     )
     tg(txt)
 
-def run():
+def run(force_sell=False, grid_index=None):
     ex = ccxt.bybit({"apiKey": API_KEY, "secret": SECRET,
                      "enableRateLimit": True, "options": {"defaultType": "spot"}})
     ticker = ex.fetch_ticker(SYMBOL)
@@ -212,14 +213,36 @@ def run():
     action    = "MONITOR"
     teknikal  = get_teknikal()
 
-    # CEK JUAL
+    # Safety: bersihin ghost positions (ETH udah gak ada di wallet)
+    cleaned = False
     for pos in positions[:]:
+        if pos["amount"] > eth * 1.01:  # stored amount > balance + toleransi 1%
+            print(f"🧹 Ghost position: {pos['amount']:.6f} ETH tapi balance cuma {eth:.6f}")
+            positions.remove(pos)
+            cleaned = True
+    if cleaned:
+        state["positions"] = positions
+        save(state)
+
+    # CEK JUAL — refresh balance biar akurat
+    bal_fresh = ex.fetch_balance()
+    eth_free = float(bal_fresh.get("ETH", {}).get("free", 0))
+    for i, pos in enumerate(positions[:]):
         target = pos["buy_price"] * (1 + PROFIT_PCT / 100)
-        amt_sell = pos["amount"] * 0.999  # Bybit spot fee 0.1%
-        if price >= target and eth >= MIN_ETH:
+        # Kalo grid_index diset, cuma jual posisi itu aja
+        if grid_index is not None and i != grid_index:
+            continue
+        if (price >= target or force_sell) and eth_free >= MIN_ETH:
+            # Pakai ETH real dari Bybit, bukan stored amount yg bisa beda
+            amt_sell = min(pos["amount"] * 0.999, eth_free * 0.997)
+            if amt_sell < MIN_ETH:
+                tg(f"⚠️ ETH terlalu kecil buat jual: {amt_sell:.6f} — skip")
+                break
             try:
-                ex.create_market_sell_order(SYMBOL, amt_sell)
-                usdt_got = round(amt_sell * price, 2)
+                order = ex.create_market_sell_order(SYMBOL, amt_sell)
+                # Ambil filled amount real dari exchange (fallback kalo None)
+                filled = float(order.get("filled") or amt_sell)
+                usdt_got = round(filled * price, 2)
                 profit   = round(usdt_got - pos["cost"], 2)
                 state["total_profit"] = round(state.get("total_profit", 0) + profit, 2)
                 state["trade_count"]  = state.get("trade_count", 0) + 1
@@ -234,17 +257,22 @@ def run():
                     f"🔄 Trade ke-`{state['trade_count']}`"
                 )
                 action = "SELL"
+                # Update balance dengan data real
+                eth_free -= filled
                 usdt += usdt_got
-                eth  -= pos["amount"]
             except Exception as e:
                 tg(f"❌ Grid SELL gagal: {e}")
             break
 
-    # CEK BELI
+    # Sync eth untuk laporan setelah sell
+    eth = eth_free
+
+    # CEK BELI — $8 per grid
     if action != "SELL" and len(positions) < GRID_LEVELS:
-        buy_usdt = usdt - RESERVE
+        buy_usdt = POSITION_SIZE
         min_buy = round(0.001 * price * 1.002, 2)
-        if buy_usdt >= min_buy:
+        # Butuh minimal $8 + $0.5 reserve buat 1 grid
+        if usdt >= buy_usdt + RESERVE:
             amt = buy_usdt / price
             if amt < MIN_ETH:
                 buy_usdt = min_buy
@@ -274,9 +302,11 @@ def run():
                 print(f"SKIP BELI: target ${target_belum:,.2f} terlalu tinggi")
             if beli_ok and usdt >= buy_usdt + RESERVE:
                 try:
-                    ex.create_market_buy_order(SYMBOL, amt)
+                    order = ex.create_market_buy_order(SYMBOL, amt)
+                    filled = float(order.get("filled") or amt)
+                    amt_real = round(filled * 0.999, 6)
                     positions.append({
-                        "buy_price": price, "amount": round(amt * 0.999, 4),
+                        "buy_price": price, "amount": amt_real,
                         "cost": round(buy_usdt, 2), "time": datetime.now().isoformat()
                     })
                     state["trade_count"] = state.get("trade_count", 0) + 1
@@ -290,7 +320,7 @@ def run():
                     )
                     action = "BUY"
                     usdt -= buy_usdt
-                    eth  += amt
+                    eth  += filled
                 except Exception as e:
                     tg(f"❌ Grid BUY gagal: {e}")
 
@@ -308,4 +338,12 @@ def run():
     except: pass
 
 if __name__ == "__main__":
-    run()
+    import sys
+    force = "--force-sell" in sys.argv
+    idx = None
+    if "--grid-index" in sys.argv:
+        try:
+            pos = sys.argv.index("--grid-index")
+            idx = int(sys.argv[pos + 1])
+        except: pass
+    run(force_sell=force, grid_index=idx)

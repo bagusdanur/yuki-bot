@@ -214,7 +214,7 @@ def update():
             "volume": ticker.get("baseVolume", 0)
         },
         "portfolio": {
-            "usdt": round(usdt, 2), "eth": round(eth, 4), "total": round(total, 2)
+            "usdt": round(usdt, 2), "eth": round(eth, 6), "total": round(total, 2)
         },
         "teknikal": teknikal,
         "score": score,
