@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Monitor alert harga — kirim notif kalau BTC tembus target"""
+"""Monitor alert harga — kirim notif kalau ETH tembus target"""
 import json, os, requests, ccxt
 
 BOT_TOKEN = "8874687238:" + os.getenv("BOT_TOKEN_SUFFIX", "AAG1VURssTACSznv8kP__tBipn4d82x-mp4")
@@ -26,7 +26,7 @@ def main():
     # Ambil harga realtime
     try:
         ex = ccxt.bybit({"enableRateLimit": True})
-        ticker = ex.fetch_ticker("BTC/USDT")
+        ticker = ex.fetch_ticker("ETH/USDT")
         price = ticker["last"]
     except:
         return
@@ -49,9 +49,9 @@ def main():
         
         if triggered_flag:
             tg_send(
-                f"╭─── **🔔 ALERT BTC** ───╮\n╰──────────────────────╯\n\n"
+                f"╭─── **🔔 ALERT ETH** ───╮\n╰──────────────────────╯\n\n"
                 f"🎯 {a['label']}\n"
-                f"📍 BTC **`${price:,.0f}`**\n\n"
+                f"📍 ETH **`${price:,.0f}`**\n\n"
                 f"💬 _{a['message']}_\n\n"
                 f"📊 Cek @Yuki17TradingBot"
             )

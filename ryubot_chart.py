@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.10
 """
-📈 RyuBot Chart — Generate chart BTC terkini + simpan ke file
+📈 RyuBot Chart — Generate chart ETH terkini + simpan ke file
 """
 
 import ccxt, os, json
@@ -12,7 +12,7 @@ from datetime import datetime
 
 API_KEY = os.getenv("BYBIT_API_KEY", "")
 SECRET = os.getenv("BYBIT_SECRET", "")
-CHART_FILE = os.path.expanduser("~/.hermes/scripts/btc_chart.png")
+CHART_FILE = os.path.expanduser("~/.hermes/scripts/eth_chart.png")
 
 def main():
     exchange = ccxt.bybit({
@@ -21,7 +21,7 @@ def main():
     })
 
     # Ambil OHLCV 4h (50 candle ≈ 8 hari)
-    ohlcv = exchange.fetch_ohlcv("BTC/USDT", "4h", limit=50)
+    ohlcv = exchange.fetch_ohlcv("ETH/USDT", "4h", limit=50)
     df = pd.DataFrame(ohlcv, columns=["time", "open", "high", "low", "close", "volume"])
     df["time"] = pd.to_datetime(df["time"], unit="ms")
     df.set_index("time", inplace=True)
@@ -59,7 +59,7 @@ def main():
 
     fig.savefig(CHART_FILE, dpi=120, bbox_inches="tight", facecolor="#090a12", edgecolor="none")
     print(f"✅ Chart saved: {CHART_FILE}")
-    print(f"📊 BTC: ${df['close'].iloc[-1]:,.2f}")
+    print(f"📊 ETH: ${df['close'].iloc[-1]:,.2f}")
 
 if __name__ == "__main__":
     main()

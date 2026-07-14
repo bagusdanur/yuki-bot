@@ -30,10 +30,10 @@ def main():
 
     bal = exchange.fetch_balance()
     usdt = bal.get("USDT", {}).get("free", 0)
-    btc = bal.get("BTC", {}).get("free", 0)
-    ticker = exchange.fetch_ticker("BTC/USDT")
+    eth = bal.get("ETH", {}).get("free", 0)
+    ticker = exchange.fetch_ticker("ETH/USDT")
     price = ticker["last"]
-    total = usdt + (btc * price)
+    total = usdt + (eth * price)
 
     # Baca progress
     profit = 0
@@ -56,8 +56,8 @@ def main():
         f"📊 *RyuBot Daily Report*\n"
         f"📆 {datetime.now().strftime('%d/%m/%Y')}\n\n"
         f"💰 *Portfolio:* \${total:.2f}\n"
-        f"💵 USDT: \${usdt:.2f} | BTC: {btc:.6f}\n"
-        f"📈 BTC: \${price:,.2f}\n"
+        f"💵 USDT: \${usdt:.2f} | ETH: {eth:.6f}\n"
+        f"📈 ETH: \${price:,.2f}\n"
         f"💸 Profit: *\${profit:.2f}*\n"
         f"🔄 Trades: {trades}\n"
         f"📆 Hari aktif: {days_active}\n\n"

@@ -7,13 +7,13 @@ from datetime import datetime
 
 API_KEY = os.getenv("BYBIT_API_KEY")
 SECRET = os.getenv("BYBIT_SECRET")
-SYMBOL = "BTC/USDT"
+SYMBOL = "ETH/USDT"
 TRADE_AMOUNT = 5.0
 
 def get_market_insight():
     """Ambil kondisi market buat alasan transaksi"""
     try:
-        r = subprocess.run(["python3.10", os.path.expanduser("~/.hermes/scripts/btc_checker.py")],
+        r = subprocess.run(["python3.10", os.path.expanduser("~/.hermes/scripts/eth_checker.py")],
             capture_output=True, text=True, timeout=15)
         if r.returncode == 0:
             d = json.loads(r.stdout)
@@ -45,7 +45,7 @@ def execute(action):
     price = ticker["last"]
     bal = ex.fetch_balance()
     usdt = float(bal.get("USDT", {}).get("free", 0))
-    btc = float(bal.get("BTC", {}).get("free", 0))
+    eth = float(bal.get("ETH", {}).get("free", 0))
     
     # Ambil kondisi market
     market = get_market_insight()
@@ -57,10 +57,10 @@ def execute(action):
         if usdt < TRADE_AMOUNT:
             result["message"] = f"USDT gak cukup: ${usdt:.2f}"
         elif amt < 0.0001:
-            result["message"] = f"BTC {amt:.6f} < 0.0001 — GAK BISA DIJUAL! Butuh minimal ${round(0.0001 * price * 1.002, 2)}"
+            result["message"] = f"ETH {amt:.6f} < 0.0001 — GAK BISA DIJUAL! Butuh minimal ${round(0.0001 * price * 1.002, 2)}"
         else:
             order = ex.create_market_buy_order(SYMBOL, amt)
-            result.update({"status": "executed", "amount_btc": round(amt, 6), "cost_usdt": TRADE_AMOUNT,
+            result.update({"status": "executed", "amount_eth": round(amt, 6), "cost_usdt": TRADE_AMOUNT,
                            "message": f"BUY ${TRADE_AMOUNT} @ ${price:,.2f} ✅"})
             
             # Notif detail
@@ -72,7 +72,7 @@ def execute(action):
                 f"╰──────────────────────────╯\n\n"
                 f"✅ **BELI BERHASIL**\n"
                 f"💰 Harga: **`${price:,.0f}`**\n"
-                f"₿ BTC: `{amt:.6f}`\n"
+                f"₿ ETH: `{amt:.6f}`\n"
                 f"💵 Biaya: `$5.00`\n\n"
                 f"━━━ **📋 ALASAN** ━━━\n"
                 f"💬 _{alasan}_\n\n"
@@ -81,14 +81,14 @@ def execute(action):
             )
     
     elif action == "SELL":
-        sell_btc = btc * 0.997
-        if sell_btc < 0.0001:
-            result["message"] = f"BTC gak cukup: {btc:.6f}"
+        sell_eth = eth * 0.997
+        if sell_eth < 0.0001:
+            result["message"] = f"ETH gak cukup: {eth:.6f}"
         else:
-            order = ex.create_market_sell_order(SYMBOL, sell_btc)
-            usdt_received = round(sell_btc * price, 2)
-            result.update({"status": "executed", "amount_btc": round(sell_btc, 6),
-                           "cost_usdt": usdt_received, "message": f"SELL {sell_btc:.6f} BTC @ ${price:,.2f} ✅"})
+            order = ex.create_market_sell_order(SYMBOL, sell_eth)
+            usdt_received = round(sell_eth * price, 2)
+            result.update({"status": "executed", "amount_eth": round(sell_eth, 6),
+                           "cost_usdt": usdt_received, "message": f"SELL {sell_eth:.6f} ETH @ ${price:,.2f} ✅"})
             
             # Hitung profit dari state file (modal beneran)
             profit = 0
@@ -99,7 +99,7 @@ def execute(action):
                 if total_invested > 0:
                     profit = round(usdt_received - total_invested, 2)
                 else:
-                    profit = round(usdt_received - (btc * price * 1.003), 2)  # estimasi modal
+                    profit = round(usdt_received - (eth * price * 1.003), 2)  # estimasi modal
             except:
                 profit = 0
             

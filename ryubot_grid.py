@@ -257,6 +257,17 @@ def run():
                 if price > teknikal["resistance"] * 0.995:  # di atas 99.5% resistance
                     beli_ok = False
                     print(f"SKIP BELI: harga ${price:,.2f} terlalu dekat resistance ${teknikal['resistance']:,.2f}")
+            # Cek: AI insight — kalo bilang overbought, jangan beli
+            if beli_ok:
+                try:
+                    with open(os.path.expanduser("~/.hermes/scripts/ryubot_unified.json")) as f:
+                        ud = json.load(f)
+                    ai = ud.get("ai_insight", "").lower()
+                    rsi = ud.get("teknikal", {}).get("rsi", 0)
+                    if rsi > 75 and ("overbought" in ai or "jenuh" in ai or "mahal" in ai or "koreksi" in ai or "jangan beli" in ai):
+                        beli_ok = False
+                        print(f"SKIP BELI: AI bilang overbought — {ud.get('ai_insight', '')[:50]}")
+                except: pass
             # Cek: target jual harus achievable
             if beli_ok and target_belum > price * 1.02:
                 beli_ok = False

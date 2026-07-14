@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.10
+#!/usr/bin/env python3
 """
 🤖 Yuki17TradingBot v4 — Premium ETH Trading Bot
 Tampilan modern, polish total, aman & informatif
@@ -248,7 +248,7 @@ async def cmd_analysis(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_chart(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await send_or_edit(update, ctx, "⏳ *Membuat chart...*", edit=True)
     
-    r = subprocess.run(["python3.10", os.path.expanduser("~/.hermes/scripts/ryubot_chart.py")],
+    r = subprocess.run(["python3", os.path.expanduser("~/.hermes/scripts/ryubot_chart.py")],
         capture_output=True, text=True, timeout=30)
     
     charts = sorted(glob.glob(os.path.expanduser("~/.hermes/scripts/*chart*.png")), key=os.path.getmtime, reverse=True)
@@ -271,13 +271,13 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"╰──────────────────────╯\n\n"
         f"**💰 Saldo**\n"
         f"┃ USDT `${d['usdt']:.2f}`\n"
-        f"┃ BTC  `{d.get('eth', 0):.6f}` _(${d.get('eth', 0)*d['price']:.2f})_\n"
+        f"┃ ETH  `{d.get('eth', 0):.6f}` _(${d.get('eth', 0)*d['price']:.2f})_\n"
         f"┃ ──────────────────\n"
         f"┃ **Total** **`${total:.2f}`**\n\n"
         f"**📊 Progress**\n"
         f"`{bar_total}`\n\n"
         f"{profit_emoji} Profit: **`${profit:.2f}`**\n"
-        f"📈 BTC: `${d['price']:,.0f}` _({d['change']:+.2f}%)_"
+        f"📈 ETH: `${d['price']:,.0f}` _({d['change']:+.2f}%)_"
     )
     await send_or_edit(update, ctx, txt, edit=True)
 
@@ -314,7 +314,7 @@ async def cmd_trades(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             txt += f"{emoji} `${t['price']:,.0f}` `{t['amount']:.4f}`\n"
         
         vol = sum(t["amount"] for t in trades[:10])
-        txt += f"\n📦 Vol 10 trade: `{vol:.4f}` BTC"
+        txt += f"\n📦 Vol 10 trade: `{vol:.4f}` ETH"
         await send_or_edit(update, ctx, txt, edit=True)
     except Exception as e:
         await send_or_edit(update, ctx, f"❌ `{e}`", edit=True)
@@ -372,7 +372,7 @@ async def cmd_news(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         articles = r.json().get("articles", [])
         
-        txt = "╭─── **📰 BERITA BTC** ───╮\n╰──────────────────────╯\n\n"
+        txt = "╭─── **📰 BERITA ETH** ───╮\n╰──────────────────────╯\n\n"
         if not articles:
             txt += "_Tidak ada berita terbaru_"
         else:
@@ -390,7 +390,7 @@ async def cmd_news(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             import re
             r = req.get("https://cointelegraph.com/rss/tag/bitcoin", timeout=10, headers={"User-Agent": "Mozilla/5.0"})
             titles = re.findall(r'<title>(.*?)</title>', r.text)[:5]
-            txt = "╭─── **📰 BERITA BTC** ───╮\n╰──────────────────────╯\n\n"
+            txt = "╭─── **📰 BERITA ETH** ───╮\n╰──────────────────────╯\n\n"
             for i, t in enumerate(titles[1:5], 1):
                 txt += f"{i}. **{t[:80]}**\n└ _cointelegraph.com_\n\n"
             await send_or_edit(update, ctx, txt, TOOLS_KEYBOARD, edit=True)
@@ -429,7 +429,7 @@ async def cmd_alert_on(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     txt = (
         f"╭─── **✅ ALERT AKTIF** ───╮\n"
         f"╰──────────────────────╯\n\n"
-        f"🔔 Alert: BTC **{direction} `${target:,}`**\n"
+        f"🔔 Alert: ETH **{direction} `${target:,}`**\n"
         f"📍 ETH skrg: `${get_data()['price']:,.0f}`\n\n"
         f"_Nanti dikirim notif kalau harga tembus target_"
     )
@@ -446,7 +446,7 @@ async def cmd_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     txt = (
         f"╭─── **🟢 KONFIRMASI BELI** ───╮\n"
         f"╰──────────────────────────╯\n\n"
-        f"💰 **BTC**: `${d['price']:,.0f}`\n"
+        f"💰 **ETH**: `${d['price']:,.0f}`\n"
         f"💵 **Jumlah**: `${TRADE_AMOUNT:.2f}`\n"
         f"🏦 **Saldo USDT**: `${d['usdt']:.2f}`\n\n"
         f"⚠️ _Klik konfirmasi untuk membeli._"
@@ -456,7 +456,7 @@ async def cmd_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_buy_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await send_or_edit(update, ctx, "⏳ *Eksekusi order...*", edit=True)
-    r = subprocess.run(["python3.10", os.path.expanduser("~/.hermes/scripts/ryubot_executor.py"), "BUY"],
+    r = subprocess.run(["python3", os.path.expanduser("~/.hermes/scripts/ryubot_executor.py"), "BUY"],
         capture_output=True, text=True, timeout=20)
     if r.returncode != 0 or r.stderr:
         await send_or_edit(update, ctx, f"❌ **Gagal**: `{r.stderr[:100] or 'Unknown'}`", edit=True)
@@ -468,7 +468,7 @@ async def cmd_buy_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             txt = (
                 f"╭─── **✅ BELI BERHASIL** ───╮\n"
                 f"╰────────────────────────╯\n\n"
-                f"₿ **BTC**: `{result['amount_btc']:.6f}`\n"
+                f"₿ **ETH**: `{result['amount_eth']:.6f}`\n"
                 f"💵 **Harga**: `${result['price']:,.0f}`\n"
                 f"💰 **Biaya**: `${TRADE_AMOUNT:.2f}`\n\n"
                 f"📈 Sekarang: `${d['price']:,.0f}` _({d['change']:+.2f}%)_"
@@ -484,17 +484,17 @@ async def cmd_sell(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     txt = (
         f"╭─── **🔴 KONFIRMASI JUAL** ───╮\n"
         f"╰──────────────────────────╯\n\n"
-        f"💰 **BTC**: `${d['price']:,.0f}`\n"
+        f"💰 **ETH**: `${d['price']:,.0f}`\n"
         f"₿ **Jumlah**: `{d.get('eth', 0):.6f}` _(${d.get('eth', 0)*d['price']:.2f})_\n"
         f"📉 **Realisasi**: `${d.get('eth', 0)*d['price'] - TRADE_AMOUNT:.2f}`\n\n"
-        f"⚠️ _Klik konfirmasi untuk menjual semua BTC._"
+        f"⚠️ _Klik konfirmasi untuk menjual semua ETH._"
     )
-    kb = confirm_kb("sell_confirm", "Jual BTC", "🔴")
+    kb = confirm_kb("sell_confirm", "Jual ETH", "🔴")
     await send_or_edit(update, ctx, txt, kb, edit=True)
 
 async def cmd_sell_confirm(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await send_or_edit(update, ctx, "⏳ *Eksekusi order...*", edit=True)
-    r = subprocess.run(["python3.10", os.path.expanduser("~/.hermes/scripts/ryubot_executor.py"), "SELL"],
+    r = subprocess.run(["python3", os.path.expanduser("~/.hermes/scripts/ryubot_executor.py"), "SELL"],
         capture_output=True, text=True, timeout=20)
     if r.returncode != 0 or r.stderr:
         await send_or_edit(update, ctx, f"❌ **Gagal**: `{r.stderr[:100] or 'Unknown'}`", edit=True)
