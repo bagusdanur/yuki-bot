@@ -112,12 +112,76 @@
 
 ### Data Files (di ~/.hermes/scripts/)
 
-| File | Isi |
-|------|-----|
-| `ryubot_grid_state.json` | Posisi grid aktif + profit |
-| `ryubot_unified.json` | Data market + portfolio + teknikal (cache) |
-| `trade_log.json` | Log harian: P/L, jumlah trade |
-| `ryubot_state.json` | State lama (backward compat) |
+| File | Isi | Diisi Oleh | Dibaca Oleh |
+|------|-----|:----------:|:----------:|
+| `ryubot_grid_state.json` | Posisi grid aktif + profit | `ryubot_grid.py` | `ryubot_grid.py`, Telegram bot |
+| `ryubot_unified.json` | **Data market + portfolio + teknikal (cache)** | `ryubot_system.py` / `ryubot_unified_update.py` | **Telegram bot**, analisis |
+| `trade_log.json` | Log harian: P/L, jumlah trade | `trade_logger.py` | Risk check |
+| `ryubot_state.json` | State lama (backward compat) | Sistem lama | Fallback profit |
+
+### 🔄 Data Unified — Penjelasan Khusus
+
+`ryubot_unified.json` adalah **file cache** yang nyimpen snapshot kondisi market, portfolio, dan indikator teknikal.
+
+**Isinya:**
+```json
+{
+  "updated_at": "2026-07-15T11:19:37",
+  "market": {
+    "price": 1876.57,         // Harga ETH real-time
+    "change_24h": 5.24,       // Perubahan 24 jam (%)
+    "high_24h": 1897.31,      // Harga tertinggi 24 jam
+    "low_24h": 1774.70,       // Harga terendah 24 jam
+    "volume": 140513.03       // Volume trading
+  },
+  "portfolio": {
+    "usdt": 8.81,             // Saldo USDT
+    "eth": 0.004294,          // Saldo ETH
+    "total": 16.87            // Total portfolio (USDT + ETH × harga)
+  },
+  "teknikal": {
+    "rsi": 61.11,             // RSI-14
+    "macd": 46.38,            // MACD line
+    "ema21": 1845.0,          // EMA 21 (pengganti SMA50)
+    "support": 1774.70,       // Support 24h
+    "resistance": 1897.31,    // Resistance 24h
+    ...
+  },
+  "score": 1,                 // Skor teknikal (-5 sampai +5)
+  "decision": "HOLD",         // Keputusan: BUY/SELL/HOLD
+  "ai_insight": "...",        // Insight dari AI Gemini
+  "grid": {
+    "positions": [...],       // Posisi grid aktif
+    "total_profit": 0.37,
+    "trade_count": 11
+  },
+  "profit": {
+    "total": 0.67             // Total profit (old + grid)
+  }
+}
+```
+
+**Cara update-nya:**
+```
+1. ryubot_grid.py selesai jalan (cron 15m)
+   → otomatis panggil ryubot_system.py
+   → system.py fetch data real-time dari Bybit
+   → hitung indikator via indicators.py
+   → tulis ke unified.json ✅
+
+2. Kalo Telegram user buka menu
+   → bot baca unified.json
+   → kalo data < 10 menit → langsung pake ✅
+   → kalo > 10 menit → update dulu lewat system.py
+```
+
+**Kenapa pake cache?**
+- Biar gak kena rate limit Bybit (setiap buka menu = fetch data = kena limit)
+- Biar cepet loading menu (baca file lokal, bukan request API)
+- Data maksimal 10 menit basi — cukup akurat buat display
+
+**File yg nulis:** `ryubot_system.py` dan `ryubot_unified_update.py`
+**File yg baca:** `ryubot_telegram_v4.py` (buat menu bot)
 
 ---
 
