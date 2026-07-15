@@ -8,12 +8,13 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-BOT_TOKEN = "8874687238:" + os.getenv("BOT_TOKEN_SUFFIX", "AAG1VURssTACSznv8kP__tBipn4d82x-mp4")
-BYBIT_API_KEY = os.getenv("BYBIT_API_KEY", "")
-BYBIT_SECRET = os.getenv("BYBIT_SECRET", "")
-TRADE_AMOUNT = 5.0
-STATE_FILE = os.path.expanduser("~/.hermes/scripts/ryubot_state.json")
-UNIFIED_FILE = os.path.expanduser("~/.hermes/scripts/ryubot_unified.json")
+import config
+BOT_TOKEN = config.TG_TOKEN
+BYBIT_API_KEY = config.API_KEY
+BYBIT_SECRET = config.SECRET
+TRADE_AMOUNT = config.POSITION_SIZE
+STATE_FILE = config.STATE_FILE
+UNIFIED_FILE = config.UNIFIED_FILE
 
 def get_exchange():
     return ccxt.bybit({"apiKey": BYBIT_API_KEY, "secret": BYBIT_SECRET, "enableRateLimit": True})
@@ -157,8 +158,8 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     
     eth_val = d.get("eth", 0)
     txt = (
-        f"╭─── **🤖 YUKI TRADING** ───╮\n"
-        f"│    _ETH Auto Trading_      │\n"
+        f"╭─── **🤖 YUKI SCALPER** ───╮\n"
+        f"│    _2 Grid Fast Mode_      │\n"
         f"╰──────────────────────╯\n\n"
         f"{emoji_change} **ETH/USDT** `${d['price']:,.2f}` _{d['change']:+.2f}%_\n\n"
         f"**📉 Teknikal**\n"
@@ -632,8 +633,8 @@ def main():
     app.add_handler(CallbackQueryHandler(cmd_fear, pattern="^fear$"))
     app.add_handler(CallbackQueryHandler(cmd_news, pattern="^news$"))
     app.add_handler(CallbackQueryHandler(cmd_alert_set, pattern="^alert_set$"))
-    app.add_handler(CallbackQueryHandler(cmd_alert_on, pattern="^alert_"))
     app.add_handler(CallbackQueryHandler(cmd_alert_off, pattern="^alert_off$"))
+    app.add_handler(CallbackQueryHandler(cmd_alert_on, pattern="^alert_"))
 
     print("🤖 Yuki17TradingBot v4 — running...")
     app.run_polling()

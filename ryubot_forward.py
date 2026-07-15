@@ -3,25 +3,12 @@
 import json, os, time, requests, subprocess, re
 from datetime import datetime
 
-# Load env langsung dari file
-env_file = os.path.expanduser("~/.hermes/.env")
-if os.path.exists(env_file):
-    with open(env_file) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k, v)
-
-BOT_TOKEN = "8874687238:" + os.getenv("BOT_TOKEN_SUFFIX", "AAG1VURssTACSznv8kP__tBipn4d82x-mp4")
-CHAT_ID = "8706658046"
-STATE_FILE = os.path.expanduser("~/.hermes/scripts/ryubot_latest.json")
-LAST_FILE = os.path.expanduser("~/.hermes/scripts/ryubot_last_sent.json")
+import config
 
 def tg_send(text, pm="Markdown"):
     try:
-        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": text, "parse_mode": pm}, timeout=10)
+        r = requests.post(f"https://api.telegram.org/bot{config.TG_TOKEN}/sendMessage",
+            json={"chat_id": config.CHAT_ID, "text": text, "parse_mode": pm}, timeout=10)
         return r.ok
     except: return False
 
@@ -108,12 +95,7 @@ def get_data():
             if r.returncode == 0 and r.stdout.strip():
                 checker_data = json.loads(r.stdout.strip())
                 # Gabung dengan latest.json buat ambil decision & alasan AI
-                try:
-                    with open(STATE_FILE) as f:
-                        ai_data = json.load(f)
-                    # Prioritas: checker data (lengkap) + AI decision/alasan
-                    checker_data["decision"] = ai_data.get("decision", checker_data.get("decision", "HOLD"))
-                    checker_data["alasan"] = ai_data.get("alasan", "")
+                    with open(config.LATEST_FILE) as f:
                     checker_data["timestamp"] = ai_data.get("timestamp", "")
                 except:
                     pass
@@ -121,9 +103,8 @@ def get_data():
         except:
             continue
     
-    # Fallback: latest.json aja
     try:
-        with open(STATE_FILE) as f:
+        with open(config.LATEST_FILE) as f:
             return json.load(f)
     except:
         return {}
@@ -135,8 +116,8 @@ def main():
     
     # Dedup: skip kalo udah pernah kirim dalam 25 menit terakhir
     try:
-        if os.path.exists(LAST_FILE):
-            with open(LAST_FILE) as f:
+        if os.path.exists(config.LAST_SENT_FILE):
+            with open(config.LAST_SENT_FILE) as f:
                 last = json.load(f)
             last_sent = last.get("sent_at", "")
             if last_sent:
@@ -279,11 +260,11 @@ def main():
     if decision == "BUY" and usdt >= 5:
         rekomendasi = "✅ **WAKTUNYA BELI!** — harga oversold / sinyal positif"
     elif decision == "BUY" and usdt < 5:
-        rekomendasi = "🟡 Sinyal BUY tapi USDT cuma `${usdt:.2f}` (min $5)"
+        rekomendasi = f"🟡 Sinyal BUY tapi USDT cuma `${usdt:.2f}` (min $5)"
     elif decision == "SELL" and btc_val >= 0.0001:
         rekomendasi = "✅ **WAKTUNYA JUAL!** — ambil profit / cut loss"
     elif decision == "SELL" and btc_val < 0.0001:
-        rekomendasi = "🟡 Sinyal SELL tapi BTC cuma `{btc_val:.6f}` (min 0.0001)"
+        rekomendasi = f"🟡 Sinyal SELL tapi BTC cuma `{btc_val:.6f}` (min 0.0001)"
     elif decision == "HOLD" and total > 0:
         rekomendasi = saran
     else:
@@ -333,7 +314,7 @@ def main():
     
     # Simpan waktu kirim
     try:
-        with open(LAST_FILE, "w") as f:
+        with open(config.LAST_SENT_FILE, "w") as f:
             json.dump({"sent_at": datetime.now().isoformat()}, f)
     except:
         pass

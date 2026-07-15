@@ -1,89 +1,50 @@
 #!/usr/bin/env python3
-"""🔄 YUKI Grid ETH/USDT — Lengkap + AI Insight"""
+"""🔄 YUKI Scalping Grid ETH/USDT"""
 import ccxt, os, json, requests, subprocess, re
-from datetime import datetime
-
-# Load env
-env_file = os.path.expanduser("~/.hermes/.env")
-if os.path.exists(env_file):
-    with open(env_file) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k, v)
-
-API_KEY    = os.getenv("BYBIT_API_KEY")
-SECRET     = os.getenv("BYBIT_SECRET")
-BOT_TOKEN  = "8874687238:" + os.getenv("BOT_TOKEN_SUFFIX", "AAG1VURssTACSznv8kP__tBipn4d82x-mp4")
-CHAT_ID    = "8706658046"
-SYMBOL     = "ETH/USDT"
-GRID_FILE  = os.path.expanduser("~/.hermes/scripts/ryubot_grid_state.json")
-CHECKER    = os.path.expanduser("~/.hermes/scripts/btc_checker.py")
-
-GRID_LEVELS = 2
-PROFIT_PCT  = 1.0
-MIN_ETH     = 0.001
-RESERVE     = 0.5
-POSITION_SIZE = 8.0  # $8 per grid
+from datetime import datetime, timedelta
+import config
+import indicators
 
 def tg(text):
     try:
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}, timeout=10)
+        requests.post(f"https://api.telegram.org/bot{config.TG_TOKEN}/sendMessage",
+            json={"chat_id": config.CHAT_ID, "text": text, "parse_mode": "Markdown"}, timeout=10)
     except: pass
 
 def load():
     try:
-        with open(GRID_FILE) as f: return json.load(f)
-    except: return {"positions": [], "total_profit": 0.0, "trade_count": 0}
+        with open(config.GRID_FILE) as f: return json.load(f)
+    except: return {"positions": [], "total_profit": 0.0, "trade_count": 0, "last_trade_time": ""}
 
 def save(st):
-    with open(GRID_FILE, "w") as f: json.dump(st, f, indent=2)
+    with open(config.GRID_FILE, "w") as f: json.dump(st, f, indent=2)
 
 def progress_bar(val, total, length=10):
     if total <= 0: return "░" * length
     filled = min(int(val / total * length), length)
     return "▓" * filled + "░" * (length - filled)
 
-def get_teknikal():
-    """Ambil data teknikal ETH langsung dari Bybit"""
+def get_teknikal(ex):
+    """Ambil data teknikal ETH 15 menit"""
     try:
-        ex = ccxt.bybit({"apiKey": API_KEY, "secret": SECRET, "enableRateLimit": True, "options": {"defaultType": "spot"}})
-        ohlcv = ex.fetch_ohlcv(SYMBOL, "1h", limit=50)
-        closes = [c[4] for c in ohlcv]
+        ohlcv = ex.fetch_ohlcv(config.SYMBOL, config.TIMEFRAME, limit=100)
+        ind_data = indicators.get_all_indicators(ohlcv)
         
-        # RSI
-        gains, losses = [], []
-        for i in range(1, len(closes)):
-            diff = closes[i] - closes[i-1]
-            gains.append(max(diff, 0))
-            losses.append(max(-diff, 0))
-        avg_gain = sum(gains[-14:]) / 14
-        avg_loss = sum(losses[-14:]) / 14
-        rs = avg_gain / avg_loss if avg_loss > 0 else 100
-        rsi = round(100 - (100 / (1 + rs)), 1)
-        
-        # SMA50
-        sma50 = round(sum(closes[-50:]) / len(closes[-50:]), 2) if len(closes) >= 50 else round(sum(closes) / len(closes), 2)
-        
-        # MACD
-        ema12 = sum(closes[-12:]) / 12
-        ema26 = sum(closes[-26:]) / 26 if len(closes) >= 26 else ema12
-        macd_line = ema12 - ema26
-        
-        # Support/Resistance
-        lows = [c[3] for c in ohlcv[-24:]]
-        highs = [c[2] for c in ohlcv[-24:]]
-        support = round(min(lows), 2)
-        resistance = round(max(highs), 2)
-        
+        # Simple scoring
+        score = 0
+        if ind_data["rsi"] and ind_data["rsi"] < config.RSI_BUY_MAX: score += 1
+        if ind_data["macd_hist"] and ind_data["macd_hist"] > 0: score += 1
+        if ind_data["ema21"] and ohlcv[-1][4] > ind_data["ema21"]: score += 1
+        if ind_data["bb_middle"] and ohlcv[-1][4] <= ind_data["bb_middle"]: score += 1
+        if ind_data["vol_spike"]: score += 1
+            
         return {
-            "indicators": {"rsi": rsi, "macd_histogram": round(macd_line, 2), "sma_50": sma50, "volume_trend": "normal"},
-            "analysis": {"score": 2 if rsi < 35 else -2 if rsi > 68 else 0, "decision": "HOLD"},
-            "support_resistance": {"support": support, "resistance": resistance}
+            "indicators": ind_data,
+            "analysis": {"score": score, "decision": "BUY" if score >= 3 else "HOLD"}
         }
-    except: pass
+    except Exception as e: 
+        print(f"Error teknikal: {e}")
+        pass
     return None
 
 def get_ai_insight(price, rsi, macd, change):
@@ -94,21 +55,18 @@ def get_ai_insight(price, rsi, macd, change):
                 if line.startswith("NINEROUTER_API_KEY="):
                     key = line.strip().split("=", 1)[1]
                     break
-        if not key or len(key) < 10:
-            return None
+        if not key or len(key) < 10: return None
         prompt = (
-            f"Harga ETH ${price:,.0f}, RSI {rsi}, MACD {macd:+.0f}, 24jam {change:+.1f}%.\n"
-            f"Tulis 1 kalimat Bahasa Indonesia soal kondisi ETH. Santai. "
-            f"Maks 100 karakter. JANGAN Bahasa Inggris."
+            f"ETH ${price:,.0f}, RSI-7 {rsi}, MACD {macd:+.0f}, 15m candle. "
+            f"Tulis 1 kalimat santai (max 80 chars) analisa scalping (buy/sell). Bahasa Indonesia."
         )
         r = requests.post("http://127.0.0.1:20128/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            json={"model": "ag/gemini-pro-agent", "messages": [{"role": "user", "content": prompt}],
-                  "max_tokens": 120, "temperature": 0.7, "stream": False}, timeout=25)
+            json={"model": "ag/gemini-3-flash", "messages": [{"role": "user", "content": prompt}],
+                  "max_tokens": 100, "temperature": 0.7, "stream": False}, timeout=15)
         if r.status_code == 200:
             c = r.json()["choices"][0]["message"]["content"].strip()
             c = re.sub(r'\*+', '', c)
-            if len(c) > 100: c = c[:100].rsplit(' ', 1)[0]
             return c
     except: pass
     return None
@@ -117,13 +75,11 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
     now = datetime.now().strftime("%H:%M %d/%m")
     emoji_price = "🟢" if change >= 0 else "🔴"
     
-    rsi = teknikal.get("indicators", {}).get("rsi", "?") if teknikal else "?"
-    macd_val = teknikal.get("indicators", {}).get("macd_histogram", 0) if teknikal else 0
-    sma50 = teknikal.get("indicators", {}).get("sma_50", 0) if teknikal else 0
+    ind = teknikal.get("indicators", {}) if teknikal else {}
+    rsi = ind.get("rsi", "?")
+    macd_val = ind.get("macd_hist", 0)
     score = teknikal.get("analysis", {}).get("score", 0) if teknikal else 0
-    sr = teknikal.get("support_resistance", {}) if teknikal else {}
-    support = sr.get("support", 0)
-    resistance = sr.get("resistance", 0)
+    support = ind.get("support", 0)
     
     bar_rsi = progress_bar(rsi if isinstance(rsi, (int,float)) else 50, 100)
     bar_score = progress_bar(abs(score if isinstance(score, (int,float)) else 0), 5)
@@ -131,76 +87,36 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
     pos_lines = ""
     total_invested = 0
     for i, p in enumerate(positions, 1):
-        target = p["buy_price"] * (1 + PROFIT_PCT/100)
+        target = p["buy_price"] * (1 + config.PROFIT_TARGET_PCT/100)
         pnl_pct = (price - p["buy_price"]) / p["buy_price"] * 100
         emoji = "🟢" if pnl_pct >= 0 else "🔴"
-        pos_lines += f"└ Grid {i}: Beli `${p['buy_price']:,.0f}` → Target `${target:,.0f}` {emoji} `{pnl_pct:+.2f}%`\n"
-        total_invested += p["cost"]
-    if not pos_lines:
-        pos_lines = "└ Belum ada posisi aktif\n"
+        pos_lines += f"└ G{i}: Beli `${p['buy_price']:,.0f}` → Target `${target:,.0f}` {emoji} `{pnl_pct:+.2f}%`\n"
+        total_invested += p.get("cost", 0)
+    if not pos_lines: pos_lines = "└ Belum ada posisi aktif\n"
     
-    bar_total = progress_bar(total, 20)
-    
-    insight = get_ai_insight(price, rsi, macd_val, change) if rsi != "?" else None
-    if not insight:
-        if isinstance(rsi, (int,float)):
-            if rsi > 68: insight = "🔥 RSI jenuh — harga berpotensi koreksi."
-            elif rsi > 55: insight = "📈 Momentum tinggi, mendekati jenuh."
-            elif rsi < 35: insight = "📉 RSI oversold — harga murah, potensi bounce."
-            else: insight = "😐 Pasar sideways, gak ada sinyal jelas."
-        else: insight = "😐 Data belum tersedia."
-    
-    signals_txt = ""
-    if isinstance(rsi, (int,float)):
-        if rsi > 68: signals_txt += "└ RSI overbought (-2)\n"
-        elif rsi > 55: signals_txt += "└ RSI tinggi (-1)\n"
-        elif rsi < 35: signals_txt += "└ RSI oversold (+2)\n"
-        elif rsi < 45: signals_txt += "└ RSI rendah (+1)\n"
-        else: signals_txt += "└ RSI netral (0)\n"
-    if resistance > 0 and price > resistance * 0.99:
-        signals_txt += f"└ Dekat resistance `${resistance:,.0f}` (-1)\n"
-    elif support > 0 and price < support * 1.01:
-        signals_txt += f"└ Dekat support `${support:,.0f}` (+1)\n"
-    if macd_val > 0: signals_txt += "└ MACD bullish (+1)\n"
-    else: signals_txt += "└ MACD bearish (-1)\n"
+    insight = get_ai_insight(price, rsi, macd_val, change) if rsi != "?" else "Data tidak tersedia."
     
     grid_action_emoji = "🔄" if action == "MONITOR" else ("🟢" if action == "BUY" else "🔴")
     
     txt = (
-        f"╭─── **{grid_action_emoji} YUKI GRID** ───╮\n"
-        f"│      _Laporan ETH Grid Auto_     │\n"
-        f"╰──────────────────────────╯\n\n"
-        f"━━━ **📊 MARKET** ━━━\n"
-        f"{emoji_price} ETH/USDT **`${price:,.2f}`**\n"
-        f"24 Jam: `{change:+.2f}%`\n\n"
-        f"━━━ **📉 TEKNIKAL** ━━━\n"
-        f"RSI   `{bar_rsi}` `{rsi}`\n"
-        f"Score `{bar_score}` `{score}`\n"
-        f"MACD  `{macd_val:+.1f}` | SMA50 `${sma50:,.0f}`\n\n"
-        f"━━━ **📍 LEVEL** ━━━\n"
-        f"🛡️ Support `${support:,.0f}`\n"
-        f"🚧 Resist  `${resistance:,.0f}`\n\n"
-        f"━━━ **🔄 GRID TRADING** ━━━\n"
-        f"{pos_lines}\n"
-        f"━━━ **💰 PORTFOLIO** ━━━\n"
-        f"`{bar_total}`\n"
-        f"┃ USDT: `${usdt:.2f}` | ETH: `{eth:.6f}`\n"
-        f"┃ **Total: `${total:.2f}`**\n"
-        f"┃ Modal grid: `${total_invested:.2f}`\n\n"
-        f"━━━ **🔥 INSIGHT** ━━━\n"
-        f"💬 _{insight}_\n\n"
-        f"━━━ **🎯 ANALISIS** ━━━\n"
-        f"{signals_txt}\n"
-        f"**Status:** `{action}` | **Grid:** `{len(positions)}/{GRID_LEVELS}`\n"
-        f"**Total Profit:** `${state.get('total_profit', 0):.2f}` | **Trade:** `{state.get('trade_count', 0)}`\n\n"
-        f"`{now} | YUKI GRID BOT`"
+        f"╭─── **{grid_action_emoji} SCALPING GRID** ───╮\n"
+        f"╰────────────────────────╯\n\n"
+        f"**Market {config.TIMEFRAME}**\n"
+        f"{emoji_price} ETH: **`${price:,.2f}`**\n"
+        f"RSI `{bar_rsi}` `{rsi}` | Score `{score}/5`\n"
+        f"MACD `{macd_val:+.1f}`\n\n"
+        f"**🔄 Posisi Grid**\n{pos_lines}\n"
+        f"**💰 Saldo**\n"
+        f"USDT: `${usdt:.2f}` | ETH: `{eth:.6f}`\n"
+        f"Total: `${total:.2f}` | Modal: `${total_invested:.2f}`\n\n"
+        f"**🔥 AI Insight**\n💬 _{insight}_\n\n"
+        f"`{action}` | Grid: `{len(positions)}/{config.GRID_LEVELS}` | PnL: `${state.get('total_profit', 0):.2f}`"
     )
     tg(txt)
 
 def run(force_sell=False, grid_index=None):
-    ex = ccxt.bybit({"apiKey": API_KEY, "secret": SECRET,
-                     "enableRateLimit": True, "options": {"defaultType": "spot"}})
-    ticker = ex.fetch_ticker(SYMBOL)
+    ex = ccxt.bybit({"apiKey": config.API_KEY, "secret": config.SECRET, "enableRateLimit": True, "options": {"defaultType": "spot"}})
+    ticker = ex.fetch_ticker(config.SYMBOL)
     price  = ticker["last"]
     change = ticker.get("percentage", 0)
     bal    = ex.fetch_balance()
@@ -208,138 +124,130 @@ def run(force_sell=False, grid_index=None):
     eth    = float(bal.get("ETH",  {}).get("free", 0))
     total  = usdt + (eth * price)
 
-    state     = load()
+    state = load()
     positions = state.get("positions", [])
-    action    = "MONITOR"
-    teknikal  = get_teknikal()
+    action = "MONITOR"
+    teknikal = get_teknikal(ex)
+    
+    # Cooldown check
+    last_trade = state.get("last_trade_time", "")
+    on_cooldown = False
+    if last_trade:
+        try:
+            lt_dt = datetime.fromisoformat(last_trade)
+            if datetime.now() < lt_dt + timedelta(minutes=config.COOLDOWN_MINUTES):
+                on_cooldown = True
+        except: pass
 
-    # Safety: bersihin ghost positions (ETH udah gak ada di wallet)
-    cleaned = False
-    for pos in positions[:]:
-        if pos["amount"] > eth * 1.01:  # stored amount > balance + toleransi 1%
-            print(f"🧹 Ghost position: {pos['amount']:.6f} ETH tapi balance cuma {eth:.6f}")
-            positions.remove(pos)
-            cleaned = True
-    if cleaned:
+    # Ghost position cleaner (compare total amount instead of per-position)
+    total_pos_eth = sum(p["amount"] for p in positions)
+    if total_pos_eth > eth * 1.05:  # Tolerance
+        print(f"🧹 Ghost positions detected. Resetting grids.")
+        positions = []
         state["positions"] = positions
         save(state)
 
-    # CEK JUAL — refresh balance biar akurat
+    # CEK JUAL
     bal_fresh = ex.fetch_balance()
     eth_free = float(bal_fresh.get("ETH", {}).get("free", 0))
+    rsi = teknikal.get("indicators", {}).get("rsi", 50) if teknikal else 50
+    
     for i, pos in enumerate(positions[:]):
-        target = pos["buy_price"] * (1 + PROFIT_PCT / 100)
-        # Kalo grid_index diset, cuma jual posisi itu aja
+        target = pos["buy_price"] * (1 + config.PROFIT_TARGET_PCT / 100)
+        stop_loss = pos["buy_price"] * (1 + config.STOP_LOSS_PCT / 100)
+        
+        should_sell = force_sell or (price >= target) or (price <= stop_loss) or (rsi > 70)
+        
         if grid_index is not None and i != grid_index:
-            continue
-        if (price >= target or force_sell) and eth_free >= MIN_ETH:
-            # Pakai ETH real dari Bybit, bukan stored amount yg bisa beda
+            should_sell = False
+            
+        if should_sell and eth_free >= config.MIN_ETH:
             amt_sell = min(pos["amount"] * 0.999, eth_free * 0.997)
-            if amt_sell < MIN_ETH:
-                tg(f"⚠️ ETH terlalu kecil buat jual: {amt_sell:.6f} — skip")
-                break
+            if amt_sell < config.MIN_ETH: continue
+            
             try:
-                order = ex.create_market_sell_order(SYMBOL, amt_sell)
-                # Ambil filled amount real dari exchange (fallback kalo None)
+                order = ex.create_market_sell_order(config.SYMBOL, amt_sell)
                 filled = float(order.get("filled") or amt_sell)
-                usdt_got = round(filled * price, 2)
-                profit   = round(usdt_got - pos["cost"], 2)
+                avg_price = float(order.get("average") or price)
+                usdt_got = round(filled * avg_price, 2)
+                
+                # Fee estimation: 0.1% of usdt_got
+                fee_est = usdt_got * (config.FEE_PCT / 100)
+                profit = round(usdt_got - pos["cost"] - fee_est, 2)
+                
                 state["total_profit"] = round(state.get("total_profit", 0) + profit, 2)
-                state["trade_count"]  = state.get("trade_count", 0) + 1
+                state["trade_count"] = state.get("trade_count", 0) + 1
+                state["last_trade_time"] = datetime.now().isoformat()
+                
                 positions.remove(pos)
+                
+                emoji = "✅" if profit >= 0 else "❌"
                 tg(
-                    f"╭─── **✅ GRID SELL** ───╮\n╰──────────────────────╯\n\n"
-                    f"🎯 **PROFIT +1% TERCAPAI!**\n"
+                    f"╭─── **{emoji} GRID SELL** ───╮\n╰──────────────────────╯\n\n"
                     f"💰 Dapat: **`${usdt_got:.2f}`**\n"
-                    f"💵 Beli: `${pos['buy_price']:,.2f}` → Jual: `${price:,.2f}`\n"
-                    f"🟢 Profit: **`+${profit:.2f}`**\n\n"
-                    f"📊 Total Profit: `${state['total_profit']:.2f}`\n"
-                    f"🔄 Trade ke-`{state['trade_count']}`"
+                    f"💵 Beli: `${pos['buy_price']:,.2f}` → Jual: `${avg_price:,.2f}`\n"
+                    f"📈 Profit Net: **`{profit:+.2f}`** (Fee: `${fee_est:.2f}`)\n\n"
+                    f"📊 Total Profit: `${state['total_profit']:.2f}`"
                 )
                 action = "SELL"
-                # Update balance dengan data real
                 eth_free -= filled
                 usdt += usdt_got
             except Exception as e:
-                tg(f"❌ Grid SELL gagal: {e}")
+                print(f"Grid SELL error: {e}")
             break
 
-    # Sync eth untuk laporan setelah sell
+    # CEK BELI
     eth = eth_free
-
-    # CEK BELI — $8 per grid
-    if action != "SELL" and len(positions) < GRID_LEVELS:
-        buy_usdt = POSITION_SIZE
-        min_buy = round(0.001 * price * 1.002, 2)
-        # Butuh minimal $8 + $0.5 reserve buat 1 grid
-        if usdt >= buy_usdt + RESERVE:
+    if action != "SELL" and len(positions) < config.GRID_LEVELS and not on_cooldown:
+        # Check daily limit here would be ideal, handled by trade_logger later
+        buy_usdt = config.POSITION_SIZE
+        
+        # Staggered Entry Logic
+        target_buy_price = price
+        if len(positions) > 0:
+            last_buy = positions[-1]["buy_price"]
+            target_buy_price = last_buy * (1 - config.STAGGER_PCT/100)
+            
+        score = teknikal.get("analysis", {}).get("score", 0) if teknikal else 0
+        
+        if score >= 3 and price <= target_buy_price and usdt >= buy_usdt + config.RESERVE:
             amt = buy_usdt / price
-            if amt < MIN_ETH:
-                buy_usdt = min_buy
-                amt = buy_usdt / price
-            # Cek harga beli harus realistis
-            target_belum = price * 1.01  # target jual = +1%
-            # Cek: beli di bawah resistance & gak terlalu mahal
-            beli_ok = True
-            if teknikal and teknikal.get("resistance", 0) > 0:
-                if price > teknikal["resistance"] * 0.995:  # di atas 99.5% resistance
-                    beli_ok = False
-                    print(f"SKIP BELI: harga ${price:,.2f} terlalu dekat resistance ${teknikal['resistance']:,.2f}")
-            # Cek RSI threshold: Grid 1 < 55, Grid 2 < 45
-            if beli_ok:
-                rsi_fresh = teknikal.get("indicators", {}).get("rsi", 0) if teknikal else 0
-                rsi_max = 55 if len(positions) == 0 else 45  # Grid 1: <55, Grid 2: <45
-                if rsi_fresh >= rsi_max:
-                    beli_ok = False
-                    print(f"SKIP BELI: RSI {rsi_fresh} >= {rsi_max} (butuh < {rsi_max})")
-            # Cek: AI insight — kalo bilang overbought, jangan beli
-            if beli_ok:
+            if amt >= config.MIN_ETH:
                 try:
-                    with open(os.path.expanduser("~/.hermes/scripts/ryubot_unified.json")) as f:
-                        ud = json.load(f)
-                    ai = ud.get("ai_insight", "").lower()
-                    # Pake RSI fresh dari grid, bukan dari unified cache
-                    rsi_fresh = teknikal.get("indicators", {}).get("rsi", 0) if teknikal else 0
-                    if rsi_fresh > 75 and ("overbought" in ai or "jenuh" in ai or "mahal" in ai or "koreksi" in ai or "jangan beli" in ai):
-                        beli_ok = False
-                        print(f"SKIP BELI: RSI {rsi_fresh}, AI overbought — {ud.get('ai_insight', '')[:50]}")
-                except: pass
-            # Cek: target jual harus achievable
-            if beli_ok and target_belum > price * 1.02:
-                beli_ok = False
-                print(f"SKIP BELI: target ${target_belum:,.2f} terlalu tinggi")
-            if beli_ok and usdt >= buy_usdt + RESERVE:
-                try:
-                    order = ex.create_market_buy_order(SYMBOL, amt)
+                    order = ex.create_market_buy_order(config.SYMBOL, amt)
                     filled = float(order.get("filled") or amt)
+                    avg_price = float(order.get("average") or price)
+                    cost = filled * avg_price
+                    fee_est = cost * (config.FEE_PCT / 100)
+                    
                     amt_real = round(filled * 0.999, 6)
+                    
                     positions.append({
-                        "buy_price": price, "amount": amt_real,
-                        "cost": round(buy_usdt, 2), "time": datetime.now().isoformat()
+                        "buy_price": avg_price, "amount": amt_real,
+                        "cost": round(cost + fee_est, 2), "time": datetime.now().isoformat()
                     })
                     state["trade_count"] = state.get("trade_count", 0) + 1
+                    state["last_trade_time"] = datetime.now().isoformat()
+                    
                     tg(
                         f"╭─── **🟢 GRID BUY** ───╮\n╰──────────────────────╯\n\n"
-                        f"✅ **BELI GRID BERHASIL**\n"
-                        f"💰 Harga: **`${price:,.2f}`**\n"
-                        f"Ξ ETH: `{amt:.4f}` (~`${buy_usdt:.2f}`)\n"
-                        f"🎯 Target: **`${price*(1+PROFIT_PCT/100):,.2f}`** (+{PROFIT_PCT}%)\n\n"
-                        f"📊 Grid aktif: `{len(positions)}/{GRID_LEVELS}`"
+                        f"✅ **BELI BERHASIL** (Grid {len(positions)})\n"
+                        f"💰 Harga: **`${avg_price:,.2f}`**\n"
+                        f"Ξ ETH: `{amt_real:.4f}` (~`${cost:.2f}`)\n"
+                        f"🎯 Target: **`${avg_price*(1+config.PROFIT_TARGET_PCT/100):,.2f}`**\n"
                     )
                     action = "BUY"
-                    usdt -= buy_usdt
-                    eth  += filled
                 except Exception as e:
-                    tg(f"❌ Grid BUY gagal: {e}")
+                    print(f"Grid BUY error: {e}")
 
-    state["positions"]  = positions
+    state["positions"] = positions
     state["last_check"] = datetime.now().isoformat()
     state["last_price"] = price
     save(state)
+    
     total = usdt + (eth * price)
     kirim_laporan(price, usdt, eth, total, positions, state, action, change, teknikal)
 
-    # Update unified system
     try:
         subprocess.run(["python3", os.path.expanduser("~/.hermes/scripts/ryubot_system.py")],
                        capture_output=True, timeout=15)

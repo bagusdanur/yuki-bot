@@ -9,19 +9,16 @@ import matplotlib
 matplotlib.use("Agg")
 import mplfinance as mpf
 from datetime import datetime
-
-API_KEY = os.getenv("BYBIT_API_KEY", "")
-SECRET = os.getenv("BYBIT_SECRET", "")
-CHART_FILE = os.path.expanduser("~/.hermes/scripts/eth_chart.png")
+import config
 
 def main():
     exchange = ccxt.bybit({
-        "apiKey": API_KEY, "secret": SECRET,
+        "apiKey": config.API_KEY, "secret": config.SECRET,
         "enableRateLimit": True, "options": {"defaultType": "spot"},
     })
 
-    # Ambil OHLCV 4h (50 candle ≈ 8 hari)
-    ohlcv = exchange.fetch_ohlcv("ETH/USDT", "4h", limit=50)
+    # Ambil OHLCV (100 candle)
+    ohlcv = exchange.fetch_ohlcv(config.SYMBOL, config.TIMEFRAME, limit=100)
     df = pd.DataFrame(ohlcv, columns=["time", "open", "high", "low", "close", "volume"])
     df["time"] = pd.to_datetime(df["time"], unit="ms")
     df.set_index("time", inplace=True)
@@ -39,10 +36,18 @@ def main():
         y_on_right=True,
     )
 
-    # Tambah indikator (SMA 7 & 25)
+    # Tambah indikator (Bollinger Bands 20, 2 & EMA 21)
+    df['sma20'] = df['close'].rolling(20).mean()
+    df['std20'] = df['close'].rolling(20).std()
+    df['upper'] = df['sma20'] + (df['std20'] * 2)
+    df['lower'] = df['sma20'] - (df['std20'] * 2)
+    df['ema21'] = df['close'].ewm(span=21, adjust=False).mean()
+
     ap = [
-        mpf.make_addplot(df["close"].rolling(7).mean(), color="#8b5cf6", width=0.8, label="SMA7"),
-        mpf.make_addplot(df["close"].rolling(25).mean(), color="#22d3ee", width=0.8, label="SMA25"),
+        mpf.make_addplot(df['upper'], color="#8b5cf6", width=0.8, linestyle='--'),
+        mpf.make_addplot(df['lower'], color="#8b5cf6", width=0.8, linestyle='--'),
+        mpf.make_addplot(df['sma20'], color="#8b5cf6", width=0.8, label="SMA20"),
+        mpf.make_addplot(df['ema21'], color="#22d3ee", width=0.8, label="EMA21"),
     ]
 
     fig, axes = mpf.plot(
@@ -57,8 +62,8 @@ def main():
         tight_layout=True,
     )
 
-    fig.savefig(CHART_FILE, dpi=120, bbox_inches="tight", facecolor="#090a12", edgecolor="none")
-    print(f"✅ Chart saved: {CHART_FILE}")
+    fig.savefig(config.CHART_FILE, dpi=120, bbox_inches="tight", facecolor="#090a12", edgecolor="none")
+    print(f"✅ Chart saved: {config.CHART_FILE}")
     print(f"📊 ETH: ${df['close'].iloc[-1]:,.2f}")
 
 if __name__ == "__main__":

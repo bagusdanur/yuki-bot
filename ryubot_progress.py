@@ -6,37 +6,30 @@ Ngirim rangkuman ke bot Telegram tiap hari
 
 import ccxt, os, json, subprocess
 from datetime import datetime, date
-
-API_KEY = os.getenv("BYBIT_API_KEY", "Jduwp85aiRktP2cIO2")
-SECRET = os.getenv("BYBIT_SECRET", "C81HCL9qkfz8ltASVko7e5C92PrstE4Ms938")
-TG_TOKEN = "8874687238:AAG1VURssTACSznv8kP__tBipn4d82x-mp4"
-STATE_FILE = os.path.expanduser("~/.hermes/scripts/ryubot_state.json")
-HISTORY_FILE = os.path.expanduser("~/.hermes/scripts/ryubot_history.json")
+import config
 
 def load_history():
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE) as f:
+    if os.path.exists(config.HISTORY_FILE):
+        with open(config.HISTORY_FILE) as f:
             return json.load(f)
     return {"days": [], "total_trades": 0, "total_profit": 0, "best_day": 0, "worst_day": 0}
 
 def save_history(h):
-    with open(HISTORY_FILE, "w") as f:
+    with open(config.HISTORY_FILE, "w") as f:
         json.dump(h, f, indent=2)
 
 def send_tg(msg):
     try:
         import urllib.request
-        url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-        data = json.dumps({"chat_id": "@ryu_trading_bot", "text": msg, "parse_mode": "Markdown"}).encode()
-        # Kirim ke chat ID mana? Kita kirim ke chat yg pernah interact
-        # Alternatif: kirim ke chat ini via cron
+        url = f"https://api.telegram.org/bot{config.TG_TOKEN}/sendMessage"
+        data = json.dumps({"chat_id": config.CHAT_ID, "text": msg, "parse_mode": "Markdown"}).encode()
         print(msg)
     except:
         pass
 
 def main():
     exchange = ccxt.bybit({
-        "apiKey": API_KEY, "secret": SECRET,
+        "apiKey": config.API_KEY, "secret": config.SECRET,
         "enableRateLimit": True, "options": {"defaultType": "spot"},
     })
 
@@ -52,8 +45,8 @@ def main():
 
     # Cek profit dari state
     profit = 0
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE) as f:
+    if os.path.exists(config.STATE_FILE):
+        with open(config.STATE_FILE) as f:
             state = json.load(f)
             profit = state.get("total_profit", 0)
 

@@ -1,136 +1,91 @@
 #!/usr/bin/env python3.10
 """
-💹 RyuBot Executor — Eksekusi BUY/SELL + notif lengkap
+💹 RyuBot Executor — Eksekusi manual BUY/SELL dengan risk limit
 """
 import ccxt, os, json, sys, subprocess
 from datetime import datetime
-
-API_KEY = os.getenv("BYBIT_API_KEY")
-SECRET = os.getenv("BYBIT_SECRET")
-SYMBOL = "ETH/USDT"
-TRADE_AMOUNT = 5.0
-
-def get_market_insight():
-    """Ambil kondisi market buat alasan transaksi"""
-    try:
-        r = subprocess.run(["python3.10", os.path.expanduser("~/.hermes/scripts/eth_checker.py")],
-            capture_output=True, text=True, timeout=15)
-        if r.returncode == 0:
-            d = json.loads(r.stdout)
-            i = d["indicators"]
-            a = d["analysis"]
-            sr = d["support_resistance"]
-            signals = a.get("signals", [])
-            alasan = "; ".join(signals[:3]) if signals else "Sinyal teknikal"
-            return {
-                "rsi": i["rsi"], "score": a["score"],
-                "macd": i["macd_histogram"], "sma50": i["sma_50"],
-                "support": sr["support"], "resistance": sr["resistance"],
-                "signals": alasan, "decision": a["decision"],
-            }
-    except: pass
-    return None
+import config
+import trade_logger
 
 def tg_notif(text):
     try:
         import requests
-        BOT_TOKEN = "8874687238:" + os.getenv("BOT_TOKEN_SUFFIX", "AAG1VURssTACSznv8kP__tBipn4d82x-mp4")
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": "8706658046", "text": text, "parse_mode": "Markdown"}, timeout=5)
+        requests.post(f"https://api.telegram.org/bot{config.TG_TOKEN}/sendMessage",
+            json={"chat_id": config.CHAT_ID, "text": text, "parse_mode": "Markdown"}, timeout=5)
     except: pass
 
 def execute(action):
-    ex = ccxt.bybit({"apiKey": API_KEY, "secret": SECRET, "enableRateLimit": True, "options": {"defaultType": "spot"}})
-    ticker = ex.fetch_ticker(SYMBOL)
+    if trade_logger.is_daily_limit_hit() and action == "BUY":
+        print(json.dumps({"status": "skipped", "message": "Daily loss limit hit. BUY paused."}))
+        tg_notif("⚠️ **EXECUTOR BLOCKED**\nDaily loss limit tercapai. BUY dibatalkan.")
+        return
+
+    ex = ccxt.bybit({"apiKey": config.API_KEY, "secret": config.SECRET, "enableRateLimit": True, "options": {"defaultType": "spot"}})
+    ticker = ex.fetch_ticker(config.SYMBOL)
     price = ticker["last"]
     bal = ex.fetch_balance()
     usdt = float(bal.get("USDT", {}).get("free", 0))
     eth = float(bal.get("ETH", {}).get("free", 0))
     
-    # Ambil kondisi market
-    market = get_market_insight()
-    
     result = {"action": action, "price": price, "timestamp": datetime.now().isoformat(), "status": "skipped", "message": ""}
     
     if action == "BUY":
-        amt = TRADE_AMOUNT / price
-        if usdt < TRADE_AMOUNT:
+        amt = config.POSITION_SIZE / price
+        if usdt < config.POSITION_SIZE:
             result["message"] = f"USDT gak cukup: ${usdt:.2f}"
-        elif amt < 0.0001:
-            result["message"] = f"ETH {amt:.6f} < 0.0001 — GAK BISA DIJUAL! Butuh minimal ${round(0.0001 * price * 1.002, 2)}"
+        elif amt < config.MIN_ETH:
+            result["message"] = f"ETH {amt:.6f} < {config.MIN_ETH} — MINIMAL ORDER BYBIT"
         else:
-            order = ex.create_market_buy_order(SYMBOL, amt)
-            filled = float(order.get("filled") or amt)
-            result.update({"status": "executed", "amount_eth": round(filled, 6), "cost_usdt": TRADE_AMOUNT,
-                           "message": f"BUY ${TRADE_AMOUNT} @ ${price:,.2f} ✅"})
-            
-            # Notif detail
-            alasan = "Sinyal teknikal"
-            if market:
-                alasan = market["signals"]
-            tg_notif(
-                f"╭─── **🟢 TRANSAKSI BUY** ───╮\n"
-                f"╰──────────────────────────╯\n\n"
-                f"✅ **BELI BERHASIL**\n"
-                f"💰 Harga: **`${price:,.0f}`**\n"
-                f"₿ ETH: `{filled:.6f}`\n"
-                f"💵 Biaya: `$5.00`\n\n"
-                f"━━━ **📋 ALASAN** ━━━\n"
-                f"💬 _{alasan}_\n\n"
-                f"📊 RSI `{market['rsi'] if market else '?'}` | Score `{market['score'] if market else '?'}`\n"
-                f"🛡️ Support `${market['support']:,.0f}` 🚧 Resist `${market['resistance']:,.0f}`" if market else ""
-            )
+            try:
+                order = ex.create_market_buy_order(config.SYMBOL, amt)
+                filled = float(order.get("filled") or amt)
+                cost = filled * price
+                fee = cost * (config.FEE_PCT / 100)
+                
+                result.update({"status": "executed", "amount_eth": round(filled, 6), "cost_usdt": cost,
+                               "message": f"BUY ${cost:.2f} @ ${price:,.2f} ✅"})
+                               
+                trade_logger.log_trade("BUY", price, filled, cost, 0, fee)
+                
+                tg_notif(
+                    f"╭─── **🟢 MANUAL BUY** ───╮\n"
+                    f"╰───────────────────────╯\n\n"
+                    f"✅ **BELI BERHASIL**\n"
+                    f"💰 Harga: **`${price:,.0f}`**\n"
+                    f"₿ ETH: `{filled:.6f}`\n"
+                    f"💵 Biaya: `${cost:.2f}`\n"
+                )
+            except Exception as e:
+                result["message"] = f"Error: {e}"
     
     elif action == "SELL":
         sell_eth = eth * 0.997
-        if sell_eth < 0.0001:
+        if sell_eth < config.MIN_ETH:
             result["message"] = f"ETH gak cukup: {eth:.6f}"
         else:
-            order = ex.create_market_sell_order(SYMBOL, sell_eth)
-            filled = float(order.get("filled") or sell_eth)
-            usdt_received = round(filled * price, 2)
-            result.update({"status": "executed", "amount_eth": round(filled, 6),
-                           "cost_usdt": usdt_received, "message": f"SELL {filled:.6f} ETH @ ${price:,.2f} ✅"})
-            
-            # Hitung profit dari modal awal (state file)
-            profit = 0
             try:
-                with open(os.path.expanduser("~/.hermes/scripts/ryubot_state.json")) as f:
-                    st = json.load(f)
-                total_invested = float(st.get("total_invested", 0))
-                if total_invested > 0:
-                    profit = round(usdt_received - total_invested, 2)
-                else:
-                    profit = round(usdt_received - (eth * price * 1.003), 2)  # estimasi modal
-            except:
-                profit = 0
-            
-            emoji_p = "🟢" if profit >= 0 else "🔴"
-            profit_str = f"+${profit:.2f}" if profit >= 0 else f"-${abs(profit):.2f}"
-            
-            alasan = "Ambil profit" if profit >= 0 else "Stop loss / sinyal sell"
-            if market:
-                alasan = market["signals"]
-            
-            tg_notif(
-                f"╭─── **🔴 TRANSAKSI SELL** ───╮\n"
-                f"╰──────────────────────────╯\n\n"
-                f"✅ **JUAL BERHASIL**\n"
-                f"💰 Dapat: **`${usdt_received:.2f}`**\n"
-                f"💵 Harga: `${price:,.0f}`\n"
-                f"{emoji_p} P/L: **`{profit_str}`**\n\n"
-                f"━━━ **📋 ALASAN** ━━━\n"
-                f"💬 _{alasan}_\n\n"
-                f"📊 RSI `{market['rsi'] if market else '?'}` | Score `{market['score'] if market else '?'}`" if market else ""
-            )
-            
-            # Reset state
-            try:
-                with open(os.path.expanduser("~/.hermes/scripts/ryubot_state.json"), "w") as f:
-                    json.dump({"positions": [], "total_invested": 0, "total_profit": round(profit, 2),
-                               "trade_count": 0, "last_action": "SELL"}, f, indent=2)
-            except:
-                pass
+                order = ex.create_market_sell_order(config.SYMBOL, sell_eth)
+                filled = float(order.get("filled") or sell_eth)
+                usdt_received = round(filled * price, 2)
+                fee = usdt_received * (config.FEE_PCT / 100)
+                
+                # Simplified profit for manual execution
+                profit = usdt_received - (filled * price) - fee
+                
+                result.update({"status": "executed", "amount_eth": round(filled, 6),
+                               "cost_usdt": usdt_received, "message": f"SELL {filled:.6f} ETH @ ${price:,.2f} ✅"})
+                               
+                trade_logger.log_trade("SELL", price, filled, usdt_received, profit, fee)
+                
+                tg_notif(
+                    f"╭─── **🔴 MANUAL SELL** ───╮\n"
+                    f"╰────────────────────────╯\n\n"
+                    f"✅ **JUAL BERHASIL**\n"
+                    f"💰 Dapat: **`${usdt_received:.2f}`**\n"
+                    f"💵 Harga: `${price:,.0f}`\n"
+                )
+            except Exception as e:
+                result["message"] = f"Error: {e}"
     
     print(json.dumps(result, indent=2))
 
