@@ -67,53 +67,31 @@ def get_teknikal(ex):
     return None
 
 def get_ai_insight(price, rsi, macd, change):
-    """Coba MiMo dulu, fallback ke 9Router"""
-    # Load env
+    """Fallback 9Router aja"""
+    key = ""
     env_file = os.path.expanduser("~/.hermes/.env")
-    env_vars = {}
     if os.path.exists(env_file):
         with open(env_file) as f:
             for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    env_vars[k] = v
-    
+                if line.startswith("NINEROUTER_API_KEY="):
+                    key = line.strip().split("=", 1)[1]
+                    break
+    if not key or len(key) < 10: return None
     prompt = (
         f"ETH ${price:,.0f}, RSI-7 {rsi}, MACD {macd:+.0f}, 15m candle. "
         f"Tulis 1 kalimat santai (max 80 chars) analisa scalping (buy/sell) dalam Bahasa Indonesia. JANGAN pakai Bahasa Inggris sama sekali."
     )
-    
-    # Coba MiMo dulu
-    mimo_key = env_vars.get("XIAOMI_API_KEY", "")
-    if mimo_key and len(mimo_key) > 10:
-        try:
-            r = requests.post("https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {mimo_key}", "Content-Type": "application/json"},
-                json={"model": "mimo-v2.5-pro", "messages": [{"role": "user", "content": prompt}],
-                      "max_tokens": 150, "temperature": 0.7, "stream": False}, timeout=15)
-            if r.status_code == 200:
-                c = r.json()["choices"][0]["message"]["content"].strip()
-                c = re.sub(r'\*+', '', c)
-                if c and len(c) > 5:
-                    return c
-        except: pass
-    
-    # Fallback ke 9Router
-    nine_key = env_vars.get("NINEROUTER_API_KEY", "")
-    if nine_key and len(nine_key) > 10:
-        try:
-            r = requests.post("http://127.0.0.1:20128/v1/chat/completions",
-                headers={"Authorization": f"Bearer {nine_key}", "Content-Type": "application/json"},
-                json={"model": "ag/gemini-3-flash", "messages": [{"role": "user", "content": prompt}],
-                      "max_tokens": 100, "temperature": 0.7, "stream": False}, timeout=15)
-            if r.status_code == 200:
-                c = r.json()["choices"][0]["message"]["content"].strip()
-                c = re.sub(r'\*+', '', c)
-                if c and len(c) > 5:
-                    return c
-        except: pass
-    
+    try:
+        r = requests.post("http://127.0.0.1:20128/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={"model": "ag/gemini-3-flash", "messages": [{"role": "user", "content": prompt}],
+                  "max_tokens": 100, "temperature": 0.7, "stream": False}, timeout=15)
+        if r.status_code == 200:
+            c = r.json()["choices"][0]["message"]["content"].strip()
+            c = re.sub(r'\*+', '', c)
+            if c and len(c) > 5:
+                return c
+    except: pass
     return None
 
 def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, teknikal=None):
