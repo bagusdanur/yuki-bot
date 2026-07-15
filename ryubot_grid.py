@@ -78,10 +78,13 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
     ind = teknikal.get("indicators", {}) if teknikal else {}
     rsi = ind.get("rsi", "?")
     macd_val = ind.get("macd_hist", 0)
+    sma50 = ind.get("sma50", 0)
     score = teknikal.get("analysis", {}).get("score", 0) if teknikal else 0
     support = ind.get("support", 0)
+    resist = ind.get("resistance", 0)
     
-    bar_rsi = progress_bar(rsi if isinstance(rsi, (int,float)) else 50, 100)
+    rsi_val = rsi if isinstance(rsi, (int,float)) else 50
+    bar_rsi = progress_bar(rsi_val, 100)
     bar_score = progress_bar(abs(score if isinstance(score, (int,float)) else 0), 5)
     
     pos_lines = ""
@@ -90,27 +93,53 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
         target = p["buy_price"] * (1 + config.PROFIT_TARGET_PCT/100)
         pnl_pct = (price - p["buy_price"]) / p["buy_price"] * 100
         emoji = "🟢" if pnl_pct >= 0 else "🔴"
-        pos_lines += f"└ G{i}: Beli `${p['buy_price']:,.0f}` → Target `${target:,.0f}` {emoji} `{pnl_pct:+.2f}%`\n"
+        pos_lines += f"└ Grid {i}: Beli `${p['buy_price']:,.0f}` → Target `${target:,.0f}` {emoji} `{pnl_pct:+.2f}%`\n"
         total_invested += p.get("cost", 0)
-    if not pos_lines: pos_lines = "└ Belum ada posisi aktif\n"
+    if pos_lines.endswith("\n"): pos_lines = pos_lines[:-1]
+    if not pos_lines: pos_lines = "└ Belum ada posisi aktif"
     
     insight = get_ai_insight(price, rsi, macd_val, change) if rsi != "?" else "Data tidak tersedia."
     
-    grid_action_emoji = "🔄" if action == "MONITOR" else ("🟢" if action == "BUY" else "🔴")
+    bar_portfolio = progress_bar(total_invested, 16) # Asumsi max investasi grid $16
+    
+    rsi_status = "netral"
+    if rsi_val > 65: rsi_status = "overbought"
+    elif rsi_val < 35: rsi_status = "oversold"
+    
+    macd_status = "bullish" if macd_val > 0 else "bearish"
+    
+    trade_count = state.get("trade_count", 0)
+    total_profit = state.get("total_profit", 0)
     
     txt = (
-        f"╭─── **{grid_action_emoji} SCALPING GRID** ───╮\n"
-        f"╰────────────────────────╯\n\n"
-        f"**Market {config.TIMEFRAME}**\n"
-        f"{emoji_price} ETH: **`${price:,.2f}`**\n"
-        f"RSI `{bar_rsi}` `{rsi}` | Score `{score}/5`\n"
-        f"MACD `{macd_val:+.1f}`\n\n"
-        f"**🔄 Posisi Grid**\n{pos_lines}\n"
-        f"**💰 Saldo**\n"
-        f"USDT: `${usdt:.2f}` | ETH: `{eth:.6f}`\n"
-        f"Total: `${total:.2f}` | Modal: `${total_invested:.2f}`\n\n"
-        f"**🔥 AI Insight**\n💬 _{insight}_\n\n"
-        f"`{action}` | Grid: `{len(positions)}/{config.GRID_LEVELS}` | PnL: `${state.get('total_profit', 0):.2f}`"
+        f"── 🔄 **YUKI GRID** ───╮\n"
+        f"│      Laporan ETH Grid Auto     │\n"
+        f"╰──────────────────────────╯\n\n"
+        f"━━━ 📊 **MARKET** ━━━\n"
+        f"{emoji_price} ETH/USDT **`${price:,.2f}`**\n"
+        f"24 Jam: `{change:+.2f}%`\n\n"
+        f"━━━ 📉 **TEKNIKAL** ━━━\n"
+        f"RSI   `{bar_rsi}` `{rsi}`\n"
+        f"Score `{bar_score}` `{score}`\n"
+        f"MACD  `{macd_val:+.1f}` | SMA50 `${sma50:,.0f}`\n\n"
+        f"━━━ 📍 **LEVEL** ━━━\n"
+        f"🛡️ Support `${support:,.0f}`\n"
+        f"🚧 Resist  `${resist:,.0f}`\n\n"
+        f"━━━ 🔄 **GRID TRADING** ━━━\n"
+        f"{pos_lines}\n\n"
+        f"━━━ 💰 **PORTFOLIO** ━━━\n"
+        f"`{bar_portfolio}`\n"
+        f"┃ USDT: `${usdt:.2f}` | ETH: `{eth:.6f}`\n"
+        f"┃ Total: `${total:.2f}`\n"
+        f"┃ Modal grid: `${total_invested:.2f}`\n\n"
+        f"━━━ 🔥 **INSIGHT** ━━━\n"
+        f"💬 _{insight}_\n\n"
+        f"━━━ 🎯 **ANALISIS** ━━━\n"
+        f"└ RSI {rsi_status} ({score})\n"
+        f"└ MACD {macd_status} ({macd_val:+.1f})\n\n"
+        f"Status: `{action}` | Grid: `{len(positions)}/{config.GRID_LEVELS}`\n"
+        f"Total Profit: `${total_profit:.2f}` | Trade: `{trade_count}`\n\n"
+        f"`{now} | YUKI GRID BOT`"
     )
     tg(txt)
 
