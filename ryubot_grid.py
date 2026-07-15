@@ -77,7 +77,7 @@ def get_ai_insight(price, rsi, macd, change):
         if not key or len(key) < 10: return None
         prompt = (
             f"ETH ${price:,.0f}, RSI-7 {rsi}, MACD {macd:+.0f}, 15m candle. "
-            f"Tulis 1 kalimat santai (max 80 chars) analisa scalping (buy/sell). Bahasa Indonesia."
+            f"Tulis 1 kalimat santai (max 80 chars) analisa scalping (buy/sell) dalam Bahasa Indonesia. JANGAN pakai Bahasa Inggris sama sekali."
         )
         r = requests.post("http://127.0.0.1:20128/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -118,7 +118,7 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
     if not pos_lines: pos_lines = "└ Belum ada posisi aktif"
     
     insight = get_ai_insight(price, rsi, macd_val, change) if rsi != "?" else None
-    if not insight or len(insight) < 10 or "language" in insight.lower():
+    if not insight or len(insight) < 10 or any(w in insight.lower() for w in ["language", "analyze", "the data", "here is", "certainly"]):
         # Fallback dinamis
         if positions:
             p = positions[0]
