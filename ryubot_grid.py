@@ -285,6 +285,13 @@ def run(force_sell=False, grid_index=None):
                 if price > teknikal["resistance"] * 0.995:  # di atas 99.5% resistance
                     beli_ok = False
                     print(f"SKIP BELI: harga ${price:,.2f} terlalu dekat resistance ${teknikal['resistance']:,.2f}")
+            # Cek RSI threshold: Grid 1 < 55, Grid 2 < 45
+            if beli_ok:
+                rsi_fresh = teknikal.get("indicators", {}).get("rsi", 0) if teknikal else 0
+                rsi_max = 55 if len(positions) == 0 else 45  # Grid 1: <55, Grid 2: <45
+                if rsi_fresh >= rsi_max:
+                    beli_ok = False
+                    print(f"SKIP BELI: RSI {rsi_fresh} >= {rsi_max} (butuh < {rsi_max})")
             # Cek: AI insight — kalo bilang overbought, jangan beli
             if beli_ok:
                 try:
