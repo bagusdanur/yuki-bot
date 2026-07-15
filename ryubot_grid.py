@@ -50,12 +50,13 @@ def get_teknikal(ex):
         if ind_data["vol_spike"]: score += 1
         if trend_1h_bullish: score += 1
             
-        # Hard filters (Phase 2):
+        # Hard filters (Hibrida - Dilonggarkan):
         # 1. RSI-14 harus di bawah ambang batas (tidak sedang overbought secara umum)
         # 2. Trend 1h wajib bullish
         rsi_14_ok = ind_data.get("rsi_14") and ind_data["rsi_14"] < config.RSI_CONFIRM_MAX
         
-        decision = "BUY" if score >= 3 and rsi_14_ok and trend_1h_bullish else "HOLD"
+        # Kirim ke AI jika score >= 2 (sebelumnya 3)
+        decision = "CANDIDATE" if score >= 2 and rsi_14_ok and trend_1h_bullish else "HOLD"
         
         return {
             "indicators": ind_data,
@@ -66,7 +67,7 @@ def get_teknikal(ex):
         pass
     return None
 
-def get_ai_insight(price, rsi, macd, change):
+def get_ai_trading_decision(price, rsi, macd, change):
     try:
         key = ""
         with open(os.path.expanduser("~/.hermes/.env")) as f:
@@ -74,21 +75,39 @@ def get_ai_insight(price, rsi, macd, change):
                 if line.startswith("NINEROUTER_API_KEY="):
                     key = line.strip().split("=", 1)[1]
                     break
-        if not key or len(key) < 10: return None
+        if not key or len(key) < 10: return {"action": "HOLD", "confidence": 0, "reasoning": "Missing API Key"}
+        
         prompt = (
-            f"ETH ${price:,.0f}, RSI-7 {rsi}, MACD {macd:+.0f}, 15m candle. "
-            f"Tulis 1 kalimat santai (max 80 chars) analisa scalping (buy/sell). Bahasa Indonesia."
+            f"Anda adalah Expert Crypto Sniper. ETH saat ini ${price:,.0f}, "
+            f"RSI-15m: {rsi}, MACD: {macd:+.1f}, Perubahan 24j: {change:+.2f}%. "
+            f"Sinyal teknikal awal mendeteksi potensi BUY.\n"
+            f"Tugas Anda: Evaluasi data ini dan putuskan apakah aman untuk BUY (scalping 1% target).\n"
+            f"Keluarkan HANYA JSON valid dengan format persis seperti ini:\n"
+            f"{{\"action\": \"BUY\", \"confidence\": 85, \"reasoning\": \"alasan singkat max 20 kata\"}}\n"
+            f"Action hanya boleh BUY atau HOLD."
         )
+        
         r = requests.post("http://127.0.0.1:20128/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={"model": "ag/gemini-3-flash", "messages": [{"role": "user", "content": prompt}],
-                  "max_tokens": 100, "temperature": 0.7, "stream": False}, timeout=15)
+                  "max_tokens": 100, "temperature": 0.3, "stream": False}, timeout=15)
+        
         if r.status_code == 200:
             c = r.json()["choices"][0]["message"]["content"].strip()
-            c = re.sub(r'\*+', '', c)
-            return c
-    except: pass
-    return None
+            # Clean possible markdown json block
+            if c.startswith("```json"): c = c[7:-3].strip()
+            elif c.startswith("```"): c = c[3:-3].strip()
+            
+            data = json.loads(c)
+            return {
+                "action": data.get("action", "HOLD").upper(),
+                "confidence": int(data.get("confidence", 0)),
+                "reasoning": data.get("reasoning", "Tidak ada penjelasan.")
+            }
+    except Exception as e:
+        print(f"AI Decision Error: {e}")
+        pass
+    return {"action": "HOLD", "confidence": 0, "reasoning": "AI Gagal merespons."}
 
 def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, teknikal=None):
     now = datetime.now().strftime("%H:%M %d/%m")
@@ -117,7 +136,7 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
     if pos_lines.endswith("\n"): pos_lines = pos_lines[:-1]
     if not pos_lines: pos_lines = "└ Belum ada posisi aktif"
     
-    insight = get_ai_insight(price, rsi, macd_val, change) if rsi != "?" else "Data tidak tersedia."
+    insight = teknikal.get("analysis", {}).get("ai_reasoning", "Menunggu setup teknikal (AI belum dipanggil).") if teknikal else "Data tidak tersedia."
     
     bar_portfolio = progress_bar(total_invested, 16) # Asumsi max investasi grid $16
     
@@ -284,9 +303,22 @@ def run(force_sell=False, grid_index=None):
         score = teknikal.get("analysis", {}).get("score", 0) if teknikal else 0
         decision = teknikal.get("analysis", {}).get("decision", "HOLD") if teknikal else "HOLD"
         
-        if decision == "BUY" and price <= target_buy_price and usdt >= buy_usdt + config.RESERVE:
-            amt = buy_usdt / price
-            if amt >= config.MIN_ETH:
+        if decision == "CANDIDATE" and price <= target_buy_price and usdt >= buy_usdt + config.RESERVE:
+            # Panggil AI Sniper untuk final decision
+            ind = teknikal["indicators"]
+            ai_resp = get_ai_trading_decision(price, ind.get("rsi", 50), ind.get("macd_hist", 0), change)
+            
+            ai_action = ai_resp["action"]
+            ai_conf = ai_resp["confidence"]
+            ai_reason = ai_resp["reasoning"]
+            
+            # Simpan hasil AI ke teknikal untuk laporan
+            teknikal["analysis"]["ai_reasoning"] = f"AI [{ai_action} {ai_conf}%] - {ai_reason}"
+            
+            if ai_action == "BUY" and ai_conf >= config.AI_CONFIDENCE_THRESHOLD:
+                print(f"🔥 AI Sniper mengeksekusi BUY! (Confidence: {ai_conf}%)")
+                amt = buy_usdt / price
+                if amt >= config.MIN_ETH:
                 try:
                     order = ex.create_market_buy_order(config.SYMBOL, amt)
                     filled = float(order.get("filled") or amt)
