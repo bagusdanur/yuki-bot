@@ -55,7 +55,7 @@ def get_teknikal(ex):
         # 2. Trend 1h wajib bullish
         rsi_14_ok = ind_data.get("rsi_14") and ind_data["rsi_14"] < config.RSI_CONFIRM_MAX
         
-        decision = "BUY" if score >= 3 and rsi_14_ok and trend_1h_bullish else "HOLD"
+        decision = "BUY" if score >= 2 and rsi_14_ok and trend_1h_bullish else "HOLD"
         
         return {
             "indicators": ind_data,

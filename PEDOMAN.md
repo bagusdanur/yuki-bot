@@ -211,7 +211,7 @@
 Syarat Wajib (Filter):
 1. Trend 1h harus Bullish (Harga penutupan 1h > EMA21 1h)
 2. RSI-14 harus < 50 (Harga tidak sedang overbought)
-3. Score teknikal >= 3 (RSI-7 rendah, MACD bullish, Vol Spike, dll)
+3. Score teknikal >= 2 (Minimal dapat 1 poin tambahan dari RSI-7, MACD, atau Vol Spike)
 
 Grid 1: Memenuhi syarat di atas → Beli $8 ETH
 Grid 2: Memenuhi syarat di atas → Beli $8 ETH (harga wajib 0.3% di bawah Grid 1)
