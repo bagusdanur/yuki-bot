@@ -319,33 +319,33 @@ def run(force_sell=False, grid_index=None):
                 print(f"🔥 AI Sniper mengeksekusi BUY! (Confidence: {ai_conf}%)")
                 amt = buy_usdt / price
                 if amt >= config.MIN_ETH:
-                try:
-                    order = ex.create_market_buy_order(config.SYMBOL, amt)
-                    filled = float(order.get("filled") or amt)
-                    avg_price = float(order.get("average") or price)
-                    cost = filled * avg_price
-                    fee_est = cost * (config.FEE_PCT / 100)
-                    
-                    amt_real = round(filled * 0.999, 6)
-                    
-                    positions.append({
-                        "buy_price": avg_price, "amount": amt_real,
-                        "cost": round(cost + fee_est, 2), "time": datetime.now().isoformat(),
-                        "peak_price": avg_price
-                    })
-                    state["trade_count"] = state.get("trade_count", 0) + 1
-                    state["last_trade_time"] = datetime.now().isoformat()
-                    
-                    tg(
-                        f"╭─── **🟢 GRID BUY** ───╮\n╰──────────────────────╯\n\n"
-                        f"✅ **BELI BERHASIL** (Grid {len(positions)})\n"
-                        f"💰 Harga: **`${avg_price:,.2f}`**\n"
-                        f"Ξ ETH: `{amt_real:.4f}` (~`${cost:.2f}`)\n"
-                        f"🎯 Target: **`${avg_price*(1+config.PROFIT_TARGET_PCT/100):,.2f}`**\n"
-                    )
-                    action = "BUY"
-                except Exception as e:
-                    print(f"Grid BUY error: {e}")
+                    try:
+                        order = ex.create_market_buy_order(config.SYMBOL, amt)
+                        filled = float(order.get("filled") or amt)
+                        avg_price = float(order.get("average") or price)
+                        cost = filled * avg_price
+                        fee_est = cost * (config.FEE_PCT / 100)
+                        
+                        amt_real = round(filled * 0.999, 6)
+                        
+                        positions.append({
+                            "buy_price": avg_price, "amount": amt_real,
+                            "cost": round(cost + fee_est, 2), "time": datetime.now().isoformat(),
+                            "peak_price": avg_price
+                        })
+                        state["trade_count"] = state.get("trade_count", 0) + 1
+                        state["last_trade_time"] = datetime.now().isoformat()
+                        
+                        tg(
+                            f"╭─── **🟢 GRID BUY** ───╮\n╰──────────────────────╯\n\n"
+                            f"✅ **BELI BERHASIL** (Grid {len(positions)})\n"
+                            f"💰 Harga: **`${avg_price:,.2f}`**\n"
+                            f"Ξ ETH: `{amt_real:.4f}` (~`${cost:.2f}`)\n"
+                            f"🎯 Target: **`${avg_price*(1+config.PROFIT_TARGET_PCT/100):,.2f}`**\n"
+                        )
+                        action = "BUY"
+                    except Exception as e:
+                        print(f"Grid BUY error: {e}")
 
     state["positions"] = positions
     state["last_check"] = datetime.now().isoformat()
