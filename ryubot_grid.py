@@ -291,10 +291,11 @@ def run(force_sell=False, grid_index=None):
                     with open(os.path.expanduser("~/.hermes/scripts/ryubot_unified.json")) as f:
                         ud = json.load(f)
                     ai = ud.get("ai_insight", "").lower()
-                    rsi = ud.get("teknikal", {}).get("rsi", 0)
-                    if rsi > 75 and ("overbought" in ai or "jenuh" in ai or "mahal" in ai or "koreksi" in ai or "jangan beli" in ai):
+                    # Pake RSI fresh dari grid, bukan dari unified cache
+                    rsi_fresh = teknikal.get("indicators", {}).get("rsi", 0) if teknikal else 0
+                    if rsi_fresh > 75 and ("overbought" in ai or "jenuh" in ai or "mahal" in ai or "koreksi" in ai or "jangan beli" in ai):
                         beli_ok = False
-                        print(f"SKIP BELI: AI bilang overbought — {ud.get('ai_insight', '')[:50]}")
+                        print(f"SKIP BELI: RSI {rsi_fresh}, AI overbought — {ud.get('ai_insight', '')[:50]}")
                 except: pass
             # Cek: target jual harus achievable
             if beli_ok and target_belum > price * 1.02:
