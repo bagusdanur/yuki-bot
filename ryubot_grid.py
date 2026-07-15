@@ -136,7 +136,31 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
     if pos_lines.endswith("\n"): pos_lines = pos_lines[:-1]
     if not pos_lines: pos_lines = "└ Belum ada posisi aktif"
     
-    insight = teknikal.get("analysis", {}).get("ai_reasoning", "Menunggu setup teknikal (AI belum dipanggil).") if teknikal else "Data tidak tersedia."
+    # Fallback insight based on kondisi real kalo AI belum dipanggil
+    ai_raw = teknikal.get("analysis", {}).get("ai_reasoning", "") if teknikal else ""
+    if ai_raw and "AI belum dipanggil" not in ai_raw and "Menunggu" not in ai_raw:
+        insight = ai_raw
+    else:
+        # Dynamic fallback
+        if positions:
+            p = positions[0]
+            pnl = (price - p["buy_price"]) / p["buy_price"] * 100
+            if pnl >= 0.5:
+                insight = f"🟢 Grid profit {pnl:.1f}%, tinggal dikit ke target. Santai aja."
+            elif pnl >= 0:
+                insight = f"📈 Grid on track ({pnl:.1f}%), target +1% dalam waktu dekat."
+            else:
+                insight = f"📉 Grid rugi {abs(pnl):.1f}%, hold sabar. Ada trailing stop jaga."
+        elif rsi_val > 65:
+            insight = "🔴 RSI overbought, harga mahal. Sabar nunggu koreksi ke support."
+        elif rsi_val < 35:
+            insight = "🟢 RSI oversold, harga murah. Siap beli kalo sinyal teknikal + AI OK."
+        elif rsi_val < 45:
+            insight = "🟡 Harga mulai murah, RSI rendah. Nunggu konfirmasi AI sniper."
+        elif macd_val > 0:
+            insight = "😐 Pasar netral, MACD positif. Nunggu setup teknikal + AI sinyal."
+        else:
+            insight = "😐 Pasar sideways, MACD melemah. Sabar, gak ada sinyal jelas."
     
     bar_portfolio = progress_bar(total_invested, 16) # Asumsi max investasi grid $16
     
