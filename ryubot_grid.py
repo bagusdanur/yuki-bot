@@ -255,7 +255,10 @@ def run(force_sell=False, grid_index=None):
             should_sell = False
             
         if should_sell and eth_free >= config.MIN_ETH:
+            # Kalo ini posisi terakhir, sekalian sweep debu ETH
             amt_sell = min(pos["amount"] * 0.999, eth_free * 0.997)
+            if len(positions) == 1:
+                amt_sell = eth_free * 0.997  # include dust
             if amt_sell < config.MIN_ETH: continue
             
             try:
