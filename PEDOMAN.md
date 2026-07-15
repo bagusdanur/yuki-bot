@@ -193,8 +193,10 @@
 |-----------|:-----:|------------|
 | `GRID_LEVELS` | 2 | Max 2 posisi paralel |
 | `POSITION_SIZE` | $8 | Tiap grid $8 |
-| `PROFIT_TARGET_PCT` | 0.8% | Target profit per grid |
+| `PROFIT_TARGET_PCT` | 1.0% | Target profit per grid (Naik dari 0.8% jadi 1.0%) |
 | `STOP_LOSS_PCT` | -1.5% | Cut loss kalo turun |
+| `TRAILING_TRIGGER_PCT` | 0.5% | Trigger trailing stop |
+| `TRAILING_LOCK_PCT` | 0.2% | Lock profit (break even) |
 | `RSI_BUY_MAX` | 50 | RSI-7 harus < 50 buat beli |
 | `RSI_PERIOD` | 7 | Pake RSI periode pendek |
 | `TIMEFRAME` | 15m | Candle 15 menit |
@@ -209,18 +211,20 @@ Grid 1: RSI-7 < 50     → Beli $8 ETH
 Grid 2: RSI-7 < 45     → Beli $8 ETH (harga 0.3% di bawah Grid 1)
 ```
 
-### Logika Jual
+### Logika Jual (Dengan Trailing Stop)
 
 ```
-Target: +0.8% dari harga beli → auto market sell
-Stop loss: -1.5% → cut loss
-Trailing: Kalo profit > 0.5%, stop loss naik ke +0.2%
+Target: +1.0% dari harga beli → auto market sell
+Stop loss awal: -1.5% → cut loss
+Trailing: Kalo profit > 0.5%, stop loss dinaikkan otomatis ke +0.2% (Lock break-even).
+Kalo mendekati target, trail 0.1% dari peak price.
 ```
 
 ### Risk Management
 
 ```
-Daily loss limit: -$0.50 → bot berhenti beli hari itu
+Daily loss limit: -$0.50 → bot berhenti beli hari itu (✅ SUDAH TERINTEGRASI)
+Trade Logger: P/L harian dicatat per siklus (✅ SUDAH TERINTEGRASI)
 Cooldown: 15 menit setelah sell sebelum beli lagi
 ```
 

@@ -4,6 +4,7 @@ import ccxt, os, json, requests, subprocess, re
 from datetime import datetime, timedelta
 import config
 import indicators
+import trade_logger
 
 def tg(text):
     try:
@@ -182,8 +183,29 @@ def run(force_sell=False, grid_index=None):
     rsi = teknikal.get("indicators", {}).get("rsi", 50) if teknikal else 50
     
     for i, pos in enumerate(positions[:]):
+        # Update peak price for trailing stop
+        peak_price = pos.get("peak_price", pos["buy_price"])
+        if price > peak_price:
+            peak_price = price
+            pos["peak_price"] = peak_price
+            
+        # Hitung persentase profit saat ini
+        pnl_pct = (price - pos["buy_price"]) / pos["buy_price"] * 100
+        stop_loss_pct = config.STOP_LOSS_PCT
+        
+        # Trailing Stop Logic
+        if pnl_pct >= config.TRAILING_TRIGGER_PCT:
+            peak_pnl_pct = (peak_price - pos["buy_price"]) / pos["buy_price"] * 100
+            if peak_pnl_pct >= config.PROFIT_TARGET_PCT * 0.8:
+                # Kalo udah dekat target, trail dari peak
+                trailing_sl_pct = peak_pnl_pct - config.TRAILING_DISTANCE_PCT
+                stop_loss_pct = max(config.TRAILING_LOCK_PCT, trailing_sl_pct)
+            else:
+                # Kalo baru lewat trigger, lock profit
+                stop_loss_pct = config.TRAILING_LOCK_PCT
+                
+        stop_loss = pos["buy_price"] * (1 + stop_loss_pct / 100)
         target = pos["buy_price"] * (1 + config.PROFIT_TARGET_PCT / 100)
-        stop_loss = pos["buy_price"] * (1 + config.STOP_LOSS_PCT / 100)
         
         should_sell = force_sell or (price >= target) or (price <= stop_loss) or (rsi > 70)
         
@@ -208,6 +230,8 @@ def run(force_sell=False, grid_index=None):
                 state["trade_count"] = state.get("trade_count", 0) + 1
                 state["last_trade_time"] = datetime.now().isoformat()
                 
+                trade_logger.log_trade("SELL", avg_price, filled, pos["cost"], profit, fee_est)
+                
                 positions.remove(pos)
                 
                 emoji = "✅" if profit >= 0 else "❌"
@@ -228,8 +252,10 @@ def run(force_sell=False, grid_index=None):
     # CEK BELI
     eth = eth_free
     if action != "SELL" and len(positions) < config.GRID_LEVELS and not on_cooldown:
-        # Check daily limit here would be ideal, handled by trade_logger later
-        buy_usdt = config.POSITION_SIZE
+        if trade_logger.is_daily_limit_hit():
+            print("Daily loss limit hit, skipping BUY")
+        else:
+            buy_usdt = config.POSITION_SIZE
         
         # Staggered Entry Logic
         target_buy_price = price
@@ -253,7 +279,8 @@ def run(force_sell=False, grid_index=None):
                     
                     positions.append({
                         "buy_price": avg_price, "amount": amt_real,
-                        "cost": round(cost + fee_est, 2), "time": datetime.now().isoformat()
+                        "cost": round(cost + fee_est, 2), "time": datetime.now().isoformat(),
+                        "peak_price": avg_price
                     })
                     state["trade_count"] = state.get("trade_count", 0) + 1
                     state["last_trade_time"] = datetime.now().isoformat()
