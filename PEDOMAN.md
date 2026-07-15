@@ -198,27 +198,23 @@
 | `TRAILING_TRIGGER_PCT` | 0.5% | Trigger trailing stop |
 | `TRAILING_LOCK_PCT` | 0.2% | Lock profit (break even) |
 | `RSI_BUY_MAX` | 50 | RSI-7 harus < 50 buat beli |
-| `RSI_CONFIRM_MAX` | 55 | RSI-14 < 55 (Filter dilonggarkan agar lebih sering trade) |
-| `AI_CONFIDENCE_THRESHOLD` | 75% | Syarat keyakinan AI untuk masuk pasar |
+| `RSI_CONFIRM_MAX` | 50 | RSI-14 harus < 50 buat konfirmasi (Fase 2) |
 | `RSI_PERIOD` | 7 | Pake RSI periode pendek |
 | `TIMEFRAME` | 15m | Candle 15 menit |
 | `COOLDOWN_MINUTES` | 15 | Antrian antar trade |
 | `DAILY_LOSS_LIMIT` | $0.50 | Stop trading kalo rugi > $0.50/hari |
 | `STAGGER_PCT` | 0.3% | Grid 2 beli 0.3% lebih murah dr Grid 1 |
 
-### Logika Beli (Hibrida AI Sniper)
+### Logika Beli (Multi-Timeframe — Fase 2)
 
 ```
-Langkah 1 (Filter Teknikal Longgar):
-- Trend 1h harus Bullish (Harga > EMA21 1h)
-- RSI-14 < 55 (Tidak sangat overbought)
-- Score teknikal >= 2 (RSI-7 rendah, MACD, dll)
-*Jika lolos, aset menjadi "CANDIDATE".*
+Syarat Wajib (Filter):
+1. Trend 1h harus Bullish (Harga penutupan 1h > EMA21 1h)
+2. RSI-14 harus < 50 (Harga tidak sedang overbought)
+3. Score teknikal >= 3 (RSI-7 rendah, MACD bullish, Vol Spike, dll)
 
-Langkah 2 (Keputusan AI):
-- Kirim data ke Gemini AI.
-- Jika AI membalas JSON: {"action": "BUY", "confidence": >= 75}, maka bot EKSEKUSI Beli $8 ETH.
-- Alasan AI (reasoning) akan dicatat di laporan Telegram.
+Grid 1: Memenuhi syarat di atas → Beli $8 ETH
+Grid 2: Memenuhi syarat di atas → Beli $8 ETH (harga wajib 0.3% di bawah Grid 1)
 ```
 
 ### Logika Jual (Dengan Trailing Stop)
