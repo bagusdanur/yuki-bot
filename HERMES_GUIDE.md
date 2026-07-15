@@ -43,8 +43,10 @@ Jika User meminta modifikasi strategi atau parameter:
 
 ## 4. Keamanan
 
-- File-file `.json` (state, data user) dan `.png` (chart) sudah di-ignore di Git.
-- Bot Token Telegram dan Bybit API Key akan di-load melalui `os.getenv` jika tersedia, atau dari fallback string jika berjalan di local/cron khusus. Pastikan env variables aman.
+- **PENTING**: File `config.py` berisi data sensitif (API Keys) sehingga **wajib** dan sudah ditambahkan ke `.gitignore` agar tidak ter-push ke GitHub. Modifikasi konfigurasi dilakukan secara lokal.
+- File-file `.json` (state, data user), `.png` (chart), dan `venv/` juga sudah di-ignore di Git.
+- Bot Token Telegram dan Bybit API Key sebaiknya di-load melalui `os.getenv` jika tersedia, atau aman di dalam `config.py` lokal.
+- Instalasi dependensi: Pastikan environment menjalankan `pip install -r requirements.txt` untuk memastikan modul seperti `ccxt` terinstall.
 
 ---
 _Dokumen ini ditulis untuk sinkronisasi pemahaman Agent._
