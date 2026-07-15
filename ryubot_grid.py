@@ -88,10 +88,10 @@ def get_ai_insight(price, rsi, macd, change):
     mimo_key = env_vars.get("XIAOMI_API_KEY", "")
     if mimo_key and len(mimo_key) > 10:
         try:
-            r = requests.post("https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+            r = requests.post("https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {mimo_key}", "Content-Type": "application/json"},
-                json={"model": "mimo-v2.5", "messages": [{"role": "user", "content": prompt}],
-                      "max_tokens": 100, "temperature": 0.7, "stream": False}, timeout=15)
+                json={"model": "mimo-v2.5-pro", "messages": [{"role": "user", "content": prompt}],
+                      "max_tokens": 150, "temperature": 0.7, "stream": False}, timeout=15)
             if r.status_code == 200:
                 c = r.json()["choices"][0]["message"]["content"].strip()
                 c = re.sub(r'\*+', '', c)
