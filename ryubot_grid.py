@@ -117,7 +117,28 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
     if pos_lines.endswith("\n"): pos_lines = pos_lines[:-1]
     if not pos_lines: pos_lines = "└ Belum ada posisi aktif"
     
-    insight = get_ai_insight(price, rsi, macd_val, change) if rsi != "?" else "Data tidak tersedia."
+    insight = get_ai_insight(price, rsi, macd_val, change) if rsi != "?" else None
+    if not insight or len(insight) < 10 or "language" in insight.lower():
+        # Fallback dinamis
+        if positions:
+            p = positions[0]
+            pnl = (price - p["buy_price"]) / p["buy_price"] * 100
+            if pnl >= 0.5:
+                insight = f"🟢 Grid profit {pnl:.1f}%, tinggal dikit ke target."
+            elif pnl >= 0:
+                insight = f"📈 Grid on track ({pnl:.1f}%), target +1% dalam waktu dekat."
+            else:
+                insight = f"📉 Grid rugi {abs(pnl):.1f}%, hold aman. Ada trailing stop."
+        elif rsi_val > 65:
+            insight = "🔴 RSI overbought, sabar nunggu koreksi."
+        elif rsi_val < 35:
+            insight = "🟢 RSI oversold, harga murah. Siap beli."
+        elif rsi_val < 45:
+            insight = "🟡 Harga mulai murah, RSI rendah. Nunggu setup teknikal."
+        elif macd_val > 0:
+            insight = "😐 Pasar netral, MACD positif. Sambil pantau."
+        else:
+            insight = "😐 Pasar sideways, gak ada sinyal jelas. Santai."
     bar_portfolio = progress_bar(total_invested, 16) # Asumsi max investasi grid $16
     
     rsi_status = "netral"
