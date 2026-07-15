@@ -26,22 +26,40 @@ def progress_bar(val, total, length=10):
     return "▓" * filled + "░" * (length - filled)
 
 def get_teknikal(ex):
-    """Ambil data teknikal ETH 15 menit"""
+    """Ambil data teknikal ETH 15m & 1h (Multi-Timeframe)"""
     try:
-        ohlcv = ex.fetch_ohlcv(config.SYMBOL, config.TIMEFRAME, limit=100)
-        ind_data = indicators.get_all_indicators(ohlcv)
+        ohlcv_15m = ex.fetch_ohlcv(config.SYMBOL, config.TIMEFRAME, limit=100)
+        ind_data = indicators.get_all_indicators(ohlcv_15m)
         
-        # Simple scoring
+        # Fetch 1h data for multi-timeframe confirmation
+        ohlcv_1h = ex.fetch_ohlcv(config.SYMBOL, "1h", limit=30)
+        ind_data_1h = indicators.get_all_indicators(ohlcv_1h)
+        
+        ema21_1h = ind_data_1h["ema21"]
+        price_1h_close = ohlcv_1h[-1][4]
+        trend_1h_bullish = ema21_1h and price_1h_close > ema21_1h
+        
+        ind_data["ema21_1h"] = ema21_1h
+        ind_data["trend_1h_bullish"] = trend_1h_bullish
+        
+        # Scoring system (Max 5)
         score = 0
         if ind_data["rsi"] and ind_data["rsi"] < config.RSI_BUY_MAX: score += 1
         if ind_data["macd_hist"] and ind_data["macd_hist"] > 0: score += 1
-        if ind_data["ema21"] and ohlcv[-1][4] > ind_data["ema21"]: score += 1
-        if ind_data["bb_middle"] and ohlcv[-1][4] <= ind_data["bb_middle"]: score += 1
+        if ind_data["ema21"] and ohlcv_15m[-1][4] > ind_data["ema21"]: score += 1
         if ind_data["vol_spike"]: score += 1
+        if trend_1h_bullish: score += 1
             
+        # Hard filters (Phase 2):
+        # 1. RSI-14 harus di bawah ambang batas (tidak sedang overbought secara umum)
+        # 2. Trend 1h wajib bullish
+        rsi_14_ok = ind_data.get("rsi_14") and ind_data["rsi_14"] < config.RSI_CONFIRM_MAX
+        
+        decision = "BUY" if score >= 3 and rsi_14_ok and trend_1h_bullish else "HOLD"
+        
         return {
             "indicators": ind_data,
-            "analysis": {"score": score, "decision": "BUY" if score >= 3 else "HOLD"}
+            "analysis": {"score": score, "decision": decision}
         }
     except Exception as e: 
         print(f"Error teknikal: {e}")
@@ -264,8 +282,9 @@ def run(force_sell=False, grid_index=None):
             target_buy_price = last_buy * (1 - config.STAGGER_PCT/100)
             
         score = teknikal.get("analysis", {}).get("score", 0) if teknikal else 0
+        decision = teknikal.get("analysis", {}).get("decision", "HOLD") if teknikal else "HOLD"
         
-        if score >= 3 and price <= target_buy_price and usdt >= buy_usdt + config.RESERVE:
+        if decision == "BUY" and price <= target_buy_price and usdt >= buy_usdt + config.RESERVE:
             amt = buy_usdt / price
             if amt >= config.MIN_ETH:
                 try:

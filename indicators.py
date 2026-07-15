@@ -126,6 +126,7 @@ def get_all_indicators(ohlcv):
     volumes = [c[5] for c in ohlcv]
     
     rsi = calculate_rsi(closes, 7)
+    rsi_14 = calculate_rsi(closes, 14)
     macd, signal, hist = calculate_macd(closes, fast=5, slow=13, signal=4)
     upper, middle, lower = calculate_bollinger_bands(closes, 20)
     atr = calculate_atr(highs, lows, closes, 7)
@@ -136,6 +137,7 @@ def get_all_indicators(ohlcv):
     
     return {
         "rsi": rsi,
+        "rsi_14": rsi_14,
         "macd": macd,
         "macd_signal": signal,
         "macd_hist": hist,

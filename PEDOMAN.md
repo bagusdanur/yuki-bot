@@ -192,23 +192,29 @@
 | Parameter | Nilai | Penjelasan |
 |-----------|:-----:|------------|
 | `GRID_LEVELS` | 2 | Max 2 posisi paralel |
-| `POSITION_SIZE` | $8 | Tiap grid $8 |
+| `POSITION_SIZE` | $15 | Tiap grid $15 (Modal dinaikkan di Fase 3) |
 | `PROFIT_TARGET_PCT` | 1.0% | Target profit per grid (Naik dari 0.8% jadi 1.0%) |
 | `STOP_LOSS_PCT` | -1.5% | Cut loss kalo turun |
 | `TRAILING_TRIGGER_PCT` | 0.5% | Trigger trailing stop |
 | `TRAILING_LOCK_PCT` | 0.2% | Lock profit (break even) |
 | `RSI_BUY_MAX` | 50 | RSI-7 harus < 50 buat beli |
+| `RSI_CONFIRM_MAX` | 50 | RSI-14 harus < 50 buat filter (Fase 2) |
 | `RSI_PERIOD` | 7 | Pake RSI periode pendek |
 | `TIMEFRAME` | 15m | Candle 15 menit |
 | `COOLDOWN_MINUTES` | 15 | Antrian antar trade |
 | `DAILY_LOSS_LIMIT` | $0.50 | Stop trading kalo rugi > $0.50/hari |
 | `STAGGER_PCT` | 0.3% | Grid 2 beli 0.3% lebih murah dr Grid 1 |
 
-### Logika Beli
+### Logika Beli (Multi-Timeframe — Fase 2)
 
 ```
-Grid 1: RSI-7 < 50     → Beli $8 ETH
-Grid 2: RSI-7 < 45     → Beli $8 ETH (harga 0.3% di bawah Grid 1)
+Syarat Wajib (Filter):
+1. Trend 1h harus Bullish (Harga penutupan 1h > EMA21 1h)
+2. RSI-14 harus < 50 (Harga tidak sedang overbought)
+3. Score teknikal >= 3 (RSI-7 rendah, MACD bullish, Vol Spike, dll)
+
+Grid 1: Memenuhi syarat di atas → Beli $15 ETH
+Grid 2: Memenuhi syarat di atas → Beli $15 ETH (harga wajib 0.3% di bawah Grid 1)
 ```
 
 ### Logika Jual (Dengan Trailing Stop)
