@@ -33,8 +33,9 @@ def get_data():
                 "vol": u["market"]["volume"], "usdt": u["portfolio"]["usdt"],
                 "eth": u["portfolio"]["eth"], "unified": u,
                 "rsi": u["teknikal"]["rsi"], "macd": u["teknikal"]["macd"],
-                "sma50": u["teknikal"]["sma50"], "support": u["teknikal"]["support"],
-                "resistance": u["teknikal"]["resistance"], "score": u["score"],
+                "sma50": u["teknikal"].get("sma50", u["teknikal"].get("ema21", 0)),
+                "support": u["teknikal"]["support"], "resistance": u["teknikal"]["resistance"],
+                "score": u["score"],
                 "decision": u["decision"], "ai_insight": u["ai_insight"]
             }
     except: pass
@@ -51,7 +52,7 @@ def get_data():
             "vol": u["market"]["volume"], "usdt": u["portfolio"]["usdt"],
             "eth": u["portfolio"]["eth"], "unified": u,
             "rsi": u["teknikal"]["rsi"], "macd": u["teknikal"]["macd"],
-            "sma50": u["teknikal"]["sma50"], "support": u["teknikal"]["support"],
+            "sma50": u["teknikal"].get("sma50", u["teknikal"].get("ema21", 0)), "support": u["teknikal"]["support"],
             "resistance": u["teknikal"]["resistance"], "score": u["score"],
             "decision": u["decision"], "ai_insight": u["ai_insight"]
         }
