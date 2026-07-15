@@ -97,7 +97,7 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
     ind = teknikal.get("indicators", {}) if teknikal else {}
     rsi = ind.get("rsi", "?")
     macd_val = ind.get("macd_hist", 0)
-    sma50 = ind.get("sma50", 0)
+    sma50 = ind.get("sma50", ind.get("ema21", 0))
     score = teknikal.get("analysis", {}).get("score", 0) if teknikal else 0
     support = ind.get("support", 0)
     resist = ind.get("resistance", 0)
@@ -160,7 +160,7 @@ def kirim_laporan(price, usdt, eth, total, positions, state, action, change=0, t
         f"━━━ 📉 **TEKNIKAL** ━━━\n"
         f"RSI   `{bar_rsi}` `{rsi}`\n"
         f"Score `{bar_score}` `{score}`\n"
-        f"MACD  `{macd_val:+.1f}` | SMA50 `${sma50:,.0f}`\n\n"
+        f"MACD  `{macd_val:+.1f}` | EMA21 `${sma50:,.0f}`\n\n"
         f"━━━ 📍 **LEVEL** ━━━\n"
         f"🛡️ Support `${support:,.0f}`\n"
         f"🚧 Resist  `${resist:,.0f}`\n\n"
