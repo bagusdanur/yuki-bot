@@ -78,3 +78,14 @@ def get_trade_stats():
         "wins": wins,
         "losses": losses
     }
+
+def get_recent_trades_pnl(n=5):
+    """Return last N trades PnL for streak calculation."""
+    logs = load_logs()
+    trades = [t for t in logs["trades"] if t["action"] == "SELL"]
+    
+    if not trades:
+        return []
+    
+    # Return last N trades PnL
+    return [t["profit"] for t in trades[-n:]]

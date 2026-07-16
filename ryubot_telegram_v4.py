@@ -613,6 +613,244 @@ async def cmd_grid_sell_execute(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await send_or_edit(update, ctx, f"❌ **Gagal jual Grid {idx+1}:** `{e}`", edit=True)
 
 # ── MAIN ──
+# ════════════════════════════════════════════════════════════════════
+# NEW: Interactive Commands
+# ════════════════════════════════════════════════════════════════════
+
+async def cmd_params(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Lihat semua parameter trading"""
+    import sys
+    sys.path.insert(0, os.path.expanduser("~/yuki-bot"))
+    import config as cfg
+    
+    txt = (
+        f"── ⚙️ **PARAMETER TRADING** ───╮\n"
+        f"╰──────────────────────────╯\n\n"
+        f"━━━ 📊 **GRID** ━━━\n"
+        f"├ Position Size: `${cfg.POSITION_SIZE}`\n"
+        f"├ Grid Levels: `{cfg.GRID_LEVELS}`\n"
+        f"├ Stagger: `{cfg.STAGGER_PCT}%`\n"
+        f"├ Cooldown: `{cfg.COOLDOWN_MINUTES}m`\n\n"
+        f"━━━ 🎯 **TARGET** ━━━\n"
+        f"├ Take Profit: `{cfg.PROFIT_TARGET_PCT}%`\n"
+        f"├ Stop Loss: `{cfg.STOP_LOSS_PCT}%`\n"
+        f"├ Trailing Trigger: `{cfg.TRAILING_TRIGGER_PCT}%`\n"
+        f"├ Trailing Lock: `{cfg.TRAILING_LOCK_PCT}%`\n"
+        f"├ Trailing Distance: `{cfg.TRAILING_DISTANCE_PCT}%`\n\n"
+        f"━━━ 🔍 **FILTER** ━━━\n"
+        f"├ Min Score: `{cfg.MIN_SCORE}/6`\n"
+        f"├ MACD Max: `{cfg.MACD_MAX_NEGATIVE}`\n"
+        f"├ RSI Buy Max: `{cfg.RSI_BUY_MAX}`\n"
+        f"├ RSI Confirm: `{cfg.RSI_CONFIRM_MAX}`\n"
+        f"├ Resistance Buffer: `{cfg.RESISTANCE_BUFFER_PCT}%`\n"
+        f"├ Support Buffer: `{cfg.SUPPORT_BUFFER_PCT}%`\n"
+        f"├ EMA15m Required: `{cfg.EMA15M_TREND_REQUIRED}`\n"
+        f"├ Regime 4h Required: `{cfg.REGIME_4H_REQUIRED}`\n\n"
+        f"━━━ 💰 **POSITION SIZING** ━━━\n"
+        f"├ Enabled: `{cfg.POSITION_SIZING_ENABLED}`\n"
+        f"├ Base: `${cfg.BASE_POSITION_SIZE}`\n"
+        f"├ Min: `${cfg.MIN_POSITION_SIZE}`\n"
+        f"├ Max: `${cfg.MAX_POSITION_SIZE}`\n"
+        f"└ Max Risk/Trade: `{cfg.MAX_RISK_PER_TRADE_PCT}%`\n"
+    )
+    await update.message.reply_text(txt, parse_mode="Markdown")
+
+async def cmd_set(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Adjust parameter: /set PROFIT_TARGET_PCT 0.6"""
+    if not ctx.args or len(ctx.args) < 2:
+        await update.message.reply_text(
+            "📝 **Cara pakai:**\n"
+            "`/set PARAMETER VALUE`\n\n"
+            "Contoh:\n"
+            "`/set PROFIT_TARGET_PCT 0.6`\n"
+            "`/set STOP_LOSS_PCT -1.0`\n"
+            "`/set MIN_SCORE 3`\n\n"
+            "Ketik `/params` untuk lihat semua parameter.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    param_name = ctx.args[0].upper()
+    param_value = ctx.args[1]
+    
+    # Validate parameter exists
+    import sys
+    sys.path.insert(0, os.path.expanduser("~/yuki-bot"))
+    import config as cfg
+    
+    if not hasattr(cfg, param_name):
+        await update.message.reply_text(f"❌ Parameter `{param_name}` gak ditemukan.", parse_mode="Markdown")
+        return
+    
+    # Convert value
+    try:
+        if "." in param_value:
+            new_value = float(param_value)
+        else:
+            new_value = int(param_value)
+    except:
+        new_value = param_value  # Keep as string for booleans
+    
+    # Update config file
+    config_path = os.path.expanduser("~/yuki-bot/config.py")
+    with open(config_path, "r") as f:
+        content = f.read()
+    
+    import re
+    # Find and replace the parameter line
+    pattern = rf"^{param_name}\s*=\s*.+$"
+    replacement = f"{param_name} = {repr(new_value)}"
+    
+    if re.search(pattern, content, re.MULTILINE):
+        new_content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
+        with open(config_path, "w") as f:
+            f.write(new_content)
+        
+        old_value = getattr(cfg, param_name)
+        await update.message.reply_text(
+            f"✅ **Parameter diupdate!**\n\n"
+            f"`{param_name}`: `{old_value}` → `{new_value}`\n\n"
+            f"⚠️ Restart PM2 diperlukan untuk apply.\n"
+            f"Ketik `/restart` untuk restart.",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(f"❌ Gak bisa update parameter.", parse_mode="Markdown")
+
+async def cmd_backtest(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Jalankan backtest"""
+    await update.message.reply_text("🔄 Running backtest... (butuh ~30 detik)")
+    
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["python3", os.path.expanduser("~/yuki-bot/backtest.py")],
+            capture_output=True, text=True, timeout=60,
+            cwd=os.path.expanduser("~/yuki-bot")
+        )
+        
+        # Extract key metrics from output
+        output = result.stdout
+        if "Best by PROFIT" in output:
+            # Parse results
+            lines = output.split("\n")
+            for line in lines:
+                if "Best by" in line:
+                    await update.message.reply_text(f"📊 {line.strip()}")
+        else:
+            await update.message.reply_text(f"✅ Backtest selesai!\n\n```\n{output[-1000:]}\n```", parse_mode="Markdown")
+    except subprocess.TimeoutExpired:
+        await update.message.reply_text("❌ Backtest timeout (>60s)")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Lihat statistik trading"""
+    import trade_logger
+    stats = trade_logger.get_trade_stats()
+    recent = trade_logger.get_recent_trades_pnl(5)
+    
+    # Win/Loss streak
+    streak = "Netral"
+    if len(recent) >= 3:
+        last_3 = recent[-3:]
+        if all(t > 0 for t in last_3):
+            streak = "🟢 Win streak (3+)"
+        elif all(t < 0 for t in last_3):
+            streak = "🔴 Loss streak (3+)"
+    
+    txt = (
+        f"── 📊 **STATISTIK TRADING** ───╮\n"
+        f"╰──────────────────────────╯\n\n"
+        f"━━━ 🎯 **PERFORMANCE** ━━━\n"
+        f"├ Total Trades: `{stats['trades']}`\n"
+        f"├ Wins: `{stats['wins']}` | Losses: `{stats['losses']}`\n"
+        f"├ Win Rate: **`{stats['win_rate']}%`**\n"
+        f"├ Total Profit: **`${stats['total_profit']:.2f}`**\n\n"
+        f"━━━ 🔥 **STREAK** ━━━\n"
+        f"└ Status: `{streak}`\n\n"
+        f"━━━ 📈 **RECENT TRADES** ━━━\n"
+    )
+    
+    for i, pnl in enumerate(recent[-5:], 1):
+        emoji = "🟢" if pnl > 0 else "🔴"
+        txt += f"├ Trade {i}: {emoji} `${pnl:+.4f}`\n"
+    
+    await update.message.reply_text(txt, parse_mode="Markdown")
+
+async def cmd_force(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Force buy/sell: /force buy atau /force sell"""
+    if not ctx.args:
+        await update.message.reply_text(
+            "📝 **Cara pakai:**\n"
+            "`/force buy` — Force beli sekarang\n"
+            "`/force sell` — Force jual semua posisi\n"
+            "`/force sell 0` — Force jual grid 0",
+            parse_mode="Markdown"
+        )
+        return
+    
+    action = ctx.args[0].lower()
+    
+    if action == "buy":
+        await update.message.reply_text("🔄 Force buy...")
+        import subprocess
+        try:
+            subprocess.run(
+                ["python3", os.path.expanduser("~/yuki-bot/ryubot_grid.py")],
+                timeout=30, cwd=os.path.expanduser("~/yuki-bot")
+            )
+            await update.message.reply_text("✅ Grid buy executed!")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error: {e}")
+    
+    elif action == "sell":
+        grid_index = int(ctx.args[1]) if len(ctx.args) > 1 else None
+        await update.message.reply_text(f"🔄 Force sell grid {grid_index if grid_index is not None else 'ALL'}...")
+        import subprocess
+        try:
+            cmd = ["python3", os.path.expanduser("~/yuki-bot/ryubot_grid.py"), "--force-sell"]
+            if grid_index is not None:
+                cmd.extend(["--grid-index", str(grid_index)])
+            subprocess.run(cmd, timeout=30, cwd=os.path.expanduser("~/yuki-bot"))
+            await update.message.reply_text("✅ Grid sell executed!")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error: {e}")
+    else:
+        await update.message.reply_text("❌ Unknown action. Pakai: `/force buy` atau `/force sell`", parse_mode="Markdown")
+
+async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """List semua command"""
+    txt = (
+        f"── 📚 **YUKI BOT COMMANDS** ───╮\n"
+        f"╰──────────────────────────╯\n\n"
+        f"━━━ 📊 **INFO** ━━━\n"
+        f"├ `/start` — Menu utama\n"
+        f"├ `/status` — Status bot + portfolio\n"
+        f"├ `/price` — Harga real-time\n"
+        f"├ `/analysis` — Analisis teknikal\n"
+        f"├ `/chart` — Chart ETH\n"
+        f"├ `/stats` — Statistik trading\n\n"
+        f"━━━ ⚙️ **CONTROL** ━━━\n"
+        f"├ `/params` — Lihat parameter\n"
+        f"├ `/set X Y` — Update parameter\n"
+        f"├ `/force buy` — Force beli\n"
+        f"├ `/force sell [N]` — Force jual\n"
+        f"└ `/backtest` — Jalankan backtest\n\n"
+        f"━━━ 📱 **MENU** ━━━\n"
+        f"├ 💰 Harga — Quick price check\n"
+        f"├ 📊 Analisis — Full analysis\n"
+        f"├ 📈 Chart — Price chart\n"
+        f"├ 📋 Portfolio — Portfolio status\n"
+        f"├ 📌 Grid Sell — Manual grid sell\n"
+        f"└ 🔧 Tools — Extra tools\n\n"
+        f"━━━ 🔔 **ALERT** ━━━\n"
+        f"├ `/alert_set` — Set price alert\n"
+        f"├ `/alert_on` — Enable alerts\n"
+        f"└ `/alert_off` — Disable alerts\n"
+    )
+    await update.message.reply_text(txt, parse_mode="Markdown")
+
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     
@@ -636,8 +874,20 @@ def main():
     app.add_handler(CallbackQueryHandler(cmd_alert_set, pattern="^alert_set$"))
     app.add_handler(CallbackQueryHandler(cmd_alert_off, pattern="^alert_off$"))
     app.add_handler(CallbackQueryHandler(cmd_alert_on, pattern="^alert_"))
-
+    
+    # NEW: Interactive commands
+    app.add_handler(CommandHandler("params", cmd_params))
+    app.add_handler(CommandHandler("set", cmd_set))
+    app.add_handler(CommandHandler("backtest", cmd_backtest))
+    app.add_handler(CommandHandler("stats", cmd_stats))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("force", cmd_force))
+    
     print("🤖 Yuki17TradingBot v4 — running...")
+    
+    # Bot commands sudah di-set via API langsung (setMyCommands)
+    # JANGAN set lagi di sini — kena rate limit!
+    
     app.run_polling()
 
 if __name__ == "__main__":
